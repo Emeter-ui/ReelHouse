@@ -1,0 +1,32 @@
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Env & secrets
+.env
+.env.local
+.env.*.local
+backend/.env
+
+# Node
+node_modules/
+.nuxt/
+.output/
+dist/
+.cache/
+*.log
+npm-debug.log*
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.python-version-local
+.pytest_cache/
+.ruff_cache/
+
+# uv
+.uv/
