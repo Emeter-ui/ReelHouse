@@ -14,11 +14,12 @@ npm install
 npm run dev                 # http://localhost:3000
 ```
 
-### Backend (requires Python 3.12+ via uv)
+### Backend (requires Python 3.12+ via uv) — *not yet implemented*
 ```bash
 # one-time: install uv
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
 
+# once backend exists (phase B*):
 cd backend
 cp .env.example .env        # add your TMDB_API_KEY
 uv sync
@@ -37,6 +38,7 @@ docs/              spec + plan
 
 ## Status
 
-- Frontend: built, runs against backend at `NUXT_PUBLIC_API_BASE`.
-- Backend: scaffolded — needs Python 3.12+ (`uv` recommended) before it can run.
+- Frontend: built (Phases F0–F5). Runs against backend at `NUXT_PUBLIC_API_BASE`.
+  Without a backend the shells render but TMDB-backed sections show empty states.
+- Backend: not yet scaffolded (Phase B*). Blocked on `uv` + Python 3.12+ install.
 - Personal use only. Do not publish.
