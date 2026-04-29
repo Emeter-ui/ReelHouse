@@ -1,6 +1,6 @@
 # Reelhouse — Implementation Plan
 
-**Status:** In progress
+**Status:** Frontend complete (F0–F5) ✓ · Backend (B0–B4) blocked on `uv` install
 **Date:** 2026-04-29
 **Spec:** `docs/superpowers/specs/2026-04-29-reelhouse-streaming-site-design.md`
 
