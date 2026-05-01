@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useTmdb, tmdbImg } from '~/composables/useTmdb'
 import { useMyList } from '~/composables/useMyList'
+import type { StreamOption, StreamResolveResponse } from '~/composables/useStream'
 const route = useRoute()
 const id = computed(() => Number(route.params.id))
 
@@ -62,39 +63,86 @@ const year = computed(() =>
 )
 
 const { public: { apiBase } } = useRuntimeConfig()
-const downloading = ref(false)
-const downloadError = ref<string | null>(null)
+const pickerOpen = ref(false)
+const pickerLoading = ref(false)
+const pickerError = ref<string | null>(null)
+const qualities = ref<StreamOption[]>([])
+const downloadButton = ref<HTMLButtonElement | null>(null)
+const pickerEl = ref<HTMLDivElement | null>(null)
 
-const downloadMovie = async () => {
-  if (!movie.value || downloading.value) return
-  downloading.value = true
-  downloadError.value = null
+const formatBytes = (n: number) => {
+  if (n >= 1e9) return `${(n / 1e9).toFixed(2)} GB`
+  if (n >= 1e6) return `${(n / 1e6).toFixed(0)} MB`
+  return `${(n / 1e3).toFixed(0)} KB`
+}
+
+const fetchQualities = async () => {
+  if (!movie.value) return
+  pickerLoading.value = true
+  pickerError.value = null
   try {
     const params = new URLSearchParams({
       tmdb_id: String(movie.value.id),
       title: movie.value.title,
     })
     if (year.value) params.set('year', year.value)
-    const res = await $fetch<{ stream_url: string }>(
+    const res = await $fetch<StreamResolveResponse>(
       `${apiBase}/api/stream/movie?${params.toString()}`,
     )
-    if (!res?.stream_url) throw new Error('no stream')
-    const safe = movie.value.title.replace(/[\\/:*?"<>|]+/g, ' ').trim()
-    const a = document.createElement('a')
-    a.href = res.stream_url
-    a.download = `${safe}.mp4`
-    a.target = '_blank'
-    a.rel = 'noopener'
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
+    if (!res?.qualities?.length) throw new Error('no qualities')
+    qualities.value = res.qualities
   } catch (e: any) {
     const status = e?.response?.status ?? e?.statusCode
-    downloadError.value = status === 404 ? 'Not available from source.' : 'Download failed.'
+    pickerError.value =
+      status === 404 ? 'Not available from source.' : 'Download failed.'
   } finally {
-    downloading.value = false
+    pickerLoading.value = false
   }
 }
+
+const togglePicker = async () => {
+  if (pickerOpen.value) {
+    pickerOpen.value = false
+    return
+  }
+  pickerOpen.value = true
+  if (!qualities.value.length && !pickerError.value) {
+    await fetchQualities()
+  }
+}
+
+const downloadOption = (opt: StreamOption) => {
+  if (!movie.value) return
+  const safe = movie.value.title.replace(/[\\/:*?"<>|]+/g, ' ').trim()
+  const a = document.createElement('a')
+  a.href = opt.url
+  a.download = `${safe}.mp4`
+  a.target = '_blank'
+  a.rel = 'noopener'
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  pickerOpen.value = false
+}
+
+const onDocClick = (e: MouseEvent) => {
+  if (!pickerOpen.value) return
+  const t = e.target as Node
+  if (pickerEl.value?.contains(t) || downloadButton.value?.contains(t)) return
+  pickerOpen.value = false
+}
+const onKey = (e: KeyboardEvent) => {
+  if (e.key === 'Escape') pickerOpen.value = false
+}
+
+onMounted(() => {
+  document.addEventListener('click', onDocClick)
+  document.addEventListener('keydown', onKey)
+})
+onBeforeUnmount(() => {
+  document.removeEventListener('click', onDocClick)
+  document.removeEventListener('keydown', onKey)
+})
 </script>
 
 <template>
@@ -136,19 +184,52 @@ const downloadMovie = async () => {
             <div v-if="director" class="text-sm text-slate-400">Directed by <span class="text-slate-200">{{ director }}</span></div>
             <div class="flex flex-wrap gap-3 pt-2">
               <NuxtLink :to="`/watch/movie/${movie.id}`" class="btn-primary">▶ Play</NuxtLink>
-              <button
-                class="btn-ghost"
-                :disabled="downloading"
-                @click="downloadMovie"
-              >
-                {{ downloading ? 'Resolving…' : '⬇ Download' }}
-              </button>
+              <div class="relative">
+                <button
+                  ref="downloadButton"
+                  class="btn-ghost"
+                  :aria-expanded="pickerOpen"
+                  aria-haspopup="menu"
+                  @click="togglePicker"
+                >
+                  ⬇ Download
+                </button>
+                <div
+                  v-if="pickerOpen"
+                  ref="pickerEl"
+                  role="menu"
+                  class="absolute z-20 mt-2 right-0 min-w-[14rem] bg-ink-900
+                         ring-1 ring-white/10 rounded-lg shadow-xl p-1"
+                >
+                  <div
+                    v-if="pickerLoading"
+                    class="px-3 py-2 text-sm text-slate-400"
+                  >
+                    Loading qualities…
+                  </div>
+                  <div
+                    v-else-if="pickerError"
+                    class="px-3 py-2 text-sm text-red-400"
+                  >
+                    {{ pickerError }}
+                  </div>
+                  <button
+                    v-for="q in qualities"
+                    v-else
+                    :key="q.url"
+                    role="menuitem"
+                    class="w-full flex items-center justify-between gap-4 px-3 py-2
+                           rounded-md text-sm hover:bg-white/5"
+                    @click="downloadOption(q)"
+                  >
+                    <span class="font-medium">{{ q.resolution }}</span>
+                    <span class="text-slate-400">{{ formatBytes(q.size_bytes) }}</span>
+                  </button>
+                </div>
+              </div>
               <button class="btn-ghost" @click="toggleList">
                 {{ inList ? '✓ In My List' : '+ My List' }}
               </button>
-            </div>
-            <div v-if="downloadError" class="text-sm text-red-400">
-              {{ downloadError }}
             </div>
           </div>
         </div>
