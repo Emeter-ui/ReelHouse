@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useTmdb } from '~/composables/useTmdb'
 import { useSeriesStream } from '~/composables/useStream'
 
 const route = useRoute()

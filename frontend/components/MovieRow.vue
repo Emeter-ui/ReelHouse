@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useTmdb } from '~/composables/useTmdb'
 type TmdbItem = {
   id: number
   title?: string

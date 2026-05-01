@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { canFetchDirect, proxiedUrl, type StreamResolveResponse } from '~/composables/useStream'
+import { useContinueWatching } from '~/composables/useContinueWatching'
 
 type Props = {
   resolved: StreamResolveResponse | null
@@ -18,6 +19,20 @@ const props = defineProps<Props>()
 const cw = useContinueWatching()
 const finalSrc = ref<string | null>(null)
 const probeStatus = ref<'idle' | 'probing' | 'direct' | 'proxied' | 'failed'>('idle')
+const videoError = ref<string | null>(null)
+
+const onVideoError = (e: Event) => {
+  const v = e.target as HTMLVideoElement
+  const code = v?.error?.code
+  const map: Record<number, string> = {
+    1: 'aborted',
+    2: 'network error',
+    3: 'decode error',
+    4: 'src not supported',
+  }
+  videoError.value = code ? map[code] ?? `code ${code}` : 'unknown'
+  probeStatus.value = 'failed'
+}
 
 watch(
   () => props.resolved?.stream_url,
@@ -68,6 +83,16 @@ const onTimeUpdate = () => {
 }
 
 onBeforeUnmount(() => cw.flush())
+
+const downloadFilename = computed(() => {
+  const safe = (props.contentTitle || 'video').replace(/[\\/:*?"<>|]+/g, ' ').trim()
+  if (props.contentType === 'series' && props.season != null && props.episode != null) {
+    const s = String(props.season).padStart(2, '0')
+    const e = String(props.episode).padStart(2, '0')
+    return `${safe} S${s}E${e}.mp4`
+  }
+  return `${safe}.mp4`
+})
 </script>
 
 <template>
@@ -87,10 +112,12 @@ onBeforeUnmount(() => cw.flush())
       :src="finalSrc"
       controls
       autoplay
+      muted
       playsinline
       class="w-full h-full"
       @loadedmetadata="onLoadedMetadata"
       @timeupdate="onTimeUpdate"
+      @error="onVideoError"
     >
       <track
         v-for="c in resolved.captions"
@@ -107,6 +134,24 @@ onBeforeUnmount(() => cw.flush())
       class="absolute top-2 left-2 chip bg-black/60 text-amber-200"
     >
       via proxy
+    </div>
+    <a
+      v-if="resolved?.stream_url"
+      :href="resolved.stream_url"
+      :download="downloadFilename"
+      target="_blank"
+      rel="noopener"
+      class="absolute top-2 right-2 chip bg-black/70 hover:bg-black text-white
+             ring-1 ring-white/10 inline-flex items-center gap-1"
+      title="Download this title"
+    >
+      ⬇ Download
+    </a>
+    <div
+      v-if="videoError"
+      class="absolute bottom-3 left-3 chip bg-red-900/80 text-red-100"
+    >
+      Playback error: {{ videoError }}
     </div>
   </div>
 </template>

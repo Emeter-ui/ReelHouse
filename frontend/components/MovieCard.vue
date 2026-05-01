@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { tmdbImg } from '~/composables/useTmdb'
 type Props = {
   id: number
   type?: 'movie' | 'series'

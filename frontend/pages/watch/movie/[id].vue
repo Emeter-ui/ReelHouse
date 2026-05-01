@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useTmdb } from '~/composables/useTmdb'
 import { useMovieStream } from '~/composables/useStream'
 
 const route = useRoute()

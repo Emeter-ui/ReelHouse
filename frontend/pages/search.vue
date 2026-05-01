@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useTmdb } from '~/composables/useTmdb'
 const route = useRoute()
 const router = useRouter()
 const q = computed(() => (route.query.q as string) ?? '')

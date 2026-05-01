@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useTmdb, tmdbImg } from '~/composables/useTmdb'
+import { useMyList } from '~/composables/useMyList'
 const route = useRoute()
 const id = computed(() => Number(route.params.id))
 
@@ -58,6 +60,41 @@ const runtime = computed(() => {
 const year = computed(() =>
   movie.value?.release_date ? movie.value.release_date.slice(0, 4) : '',
 )
+
+const { public: { apiBase } } = useRuntimeConfig()
+const downloading = ref(false)
+const downloadError = ref<string | null>(null)
+
+const downloadMovie = async () => {
+  if (!movie.value || downloading.value) return
+  downloading.value = true
+  downloadError.value = null
+  try {
+    const params = new URLSearchParams({
+      tmdb_id: String(movie.value.id),
+      title: movie.value.title,
+    })
+    if (year.value) params.set('year', year.value)
+    const res = await $fetch<{ stream_url: string }>(
+      `${apiBase}/api/stream/movie?${params.toString()}`,
+    )
+    if (!res?.stream_url) throw new Error('no stream')
+    const safe = movie.value.title.replace(/[\\/:*?"<>|]+/g, ' ').trim()
+    const a = document.createElement('a')
+    a.href = res.stream_url
+    a.download = `${safe}.mp4`
+    a.target = '_blank'
+    a.rel = 'noopener'
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+  } catch (e: any) {
+    const status = e?.response?.status ?? e?.statusCode
+    downloadError.value = status === 404 ? 'Not available from source.' : 'Download failed.'
+  } finally {
+    downloading.value = false
+  }
+}
 </script>
 
 <template>
@@ -99,9 +136,19 @@ const year = computed(() =>
             <div v-if="director" class="text-sm text-slate-400">Directed by <span class="text-slate-200">{{ director }}</span></div>
             <div class="flex flex-wrap gap-3 pt-2">
               <NuxtLink :to="`/watch/movie/${movie.id}`" class="btn-primary">▶ Play</NuxtLink>
+              <button
+                class="btn-ghost"
+                :disabled="downloading"
+                @click="downloadMovie"
+              >
+                {{ downloading ? 'Resolving…' : '⬇ Download' }}
+              </button>
               <button class="btn-ghost" @click="toggleList">
                 {{ inList ? '✓ In My List' : '+ My List' }}
               </button>
+            </div>
+            <div v-if="downloadError" class="text-sm text-red-400">
+              {{ downloadError }}
             </div>
           </div>
         </div>

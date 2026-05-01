@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useTmdb } from '~/composables/useTmdb'
 useHead({ title: 'Movies — Reelhouse' })
 
 type Movie = {

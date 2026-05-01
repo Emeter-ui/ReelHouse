@@ -1,4 +1,7 @@
 <script setup lang="ts">
+import { useMyList } from '~/composables/useMyList'
+import { useContinueWatching } from '~/composables/useContinueWatching'
+import { tmdbImg } from '~/composables/useTmdb'
 useHead({ title: 'My List — Reelhouse' })
 
 const myList = useMyList()

@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useTmdb, tmdbImg } from '~/composables/useTmdb'
+import { useMyList } from '~/composables/useMyList'
 const route = useRoute()
 const id = computed(() => Number(route.params.id))
 

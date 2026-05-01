@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { useTmdb } from '~/composables/useTmdb'
+import { useContinueWatching } from '~/composables/useContinueWatching'
 useHead({ title: 'Reelhouse — Home' })
 
 type TmdbItem = {

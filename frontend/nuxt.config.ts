@@ -7,6 +7,9 @@ export default defineNuxtConfig({
   ssr: false,
 
   modules: ['@nuxtjs/tailwindcss'],
+  imports: {
+    dirs: ['composables']
+  },
 
   css: ['~/assets/css/main.css'],
 
@@ -26,7 +29,7 @@ export default defineNuxtConfig({
 
   runtimeConfig: {
     public: {
-      apiBase: 'http://localhost:8000',
+      apiBase: 'http://localhost:8001', // overridden by NUXT_PUBLIC_API_BASE in .env
       tmdbImageBase: 'https://image.tmdb.org/t/p',
     },
   },
