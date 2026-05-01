@@ -90,17 +90,22 @@ async def _resolve(
         except Exception:
             pass
 
-        # For series, only count qualities of the same (season, episode).
+        # For series, restrict to the same (season, episode); else use all files.
         relevant = (
             [v for v in files.list if v.season == season and v.episode == episode]
             if season is not None and episode is not None
             else files.list
         )
-        qualities = sorted(
-            {f"{v.resolution}p" for v in relevant if v.resolution},
-            key=lambda q: int(q.rstrip("p")),
-            reverse=True,
-        )
+        qualities = [
+            {
+                "resolution": f"{v.resolution}p",
+                "size_bytes": v.size,
+                "url": str(v.resource_link),
+            }
+            for v in relevant
+            if v.resolution
+        ]
+        qualities.sort(key=lambda q: int(q["resolution"].rstrip("p")), reverse=True)
 
         return {
             "stream_url": str(chosen.resource_link),
