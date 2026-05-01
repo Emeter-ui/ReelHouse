@@ -1,8 +1,14 @@
 import type { Ref } from 'vue'
 
+export interface StreamOption {
+  resolution: string
+  size_bytes: number
+  url: string
+}
+
 export interface StreamResolveResponse {
   stream_url: string
-  qualities: string[]
+  qualities: StreamOption[]
   captions: Array<{ lang: string; url: string }>
   source: string
 }
