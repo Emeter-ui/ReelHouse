@@ -185,7 +185,7 @@ const year = computed(() =>
             :poster="s.poster_path"
             :year="s.first_air_date ? Number(s.first_air_date.slice(0, 4)) : null"
             :rating="s.vote_average ?? null"
-            size="sm"
+            size="full"
           />
         </div>
       </section>

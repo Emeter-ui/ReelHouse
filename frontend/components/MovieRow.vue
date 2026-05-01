@@ -69,7 +69,7 @@ const yearOf = (item: TmdbItem) => {
       <div
         v-for="i in 8"
         :key="i"
-        class="w-40 sm:w-48 aspect-[2/3] rounded-lg bg-white/5 animate-pulse"
+        class="w-40 sm:w-48 aspect-[2/3] rounded-lg bg-white/5 animate-pulse shrink-0"
       />
     </div>
 

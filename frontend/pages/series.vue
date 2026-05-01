@@ -58,7 +58,7 @@ const yearOf = (s: Series) => (s.first_air_date ? Number(s.first_air_date.slice(
             :poster="s.poster_path"
             :year="yearOf(s)"
             :rating="s.vote_average ?? null"
-            size="sm"
+            size="full"
           />
         </div>
 

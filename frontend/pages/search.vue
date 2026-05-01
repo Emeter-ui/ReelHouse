@@ -92,7 +92,7 @@ const typeOf = (i: SearchItem): 'movie' | 'series' =>
         :poster="r.poster_path"
         :year="yearOf(r)"
         :rating="r.vote_average ?? null"
-        size="sm"
+        size="full"
       />
     </div>
   </div>

@@ -7,7 +7,7 @@ type Props = {
   poster: string | null
   year?: number | null
   rating?: number | null
-  size?: 'sm' | 'md'
+  size?: 'sm' | 'md' | 'full'
 }
 const props = withDefaults(defineProps<Props>(), {
   type: 'movie',
@@ -20,13 +20,15 @@ const link = computed(() =>
   props.type === 'series' ? `/series/${props.id}` : `/movie/${props.id}`,
 )
 
-const widthClass = computed(() =>
-  props.size === 'sm' ? 'w-32 sm:w-36' : 'w-40 sm:w-48',
-)
+const widthClass = computed(() => {
+  if (props.size === 'sm') return 'w-32 sm:w-36'
+  if (props.size === 'full') return 'w-full'
+  return 'w-40 sm:w-48'
+})
 </script>
 
 <template>
-  <NuxtLink :to="link" class="card block group snap-start" :class="widthClass">
+  <NuxtLink :to="link" class="card block group snap-start shrink-0" :class="widthClass">
     <div class="aspect-[2/3] bg-ink-800 relative">
       <img
         v-if="poster"

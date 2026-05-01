@@ -64,7 +64,7 @@ const sorted = computed<Part[]>(() =>
           :poster="m.poster_path"
           :year="m.release_date ? Number(m.release_date.slice(0, 4)) : null"
           :rating="m.vote_average ?? null"
-          size="sm"
+          size="full"
         />
       </div>
     </div>

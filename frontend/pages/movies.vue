@@ -58,7 +58,7 @@ const yearOf = (m: Movie) => (m.release_date ? Number(m.release_date.slice(0, 4)
             :poster="m.poster_path"
             :year="yearOf(m)"
             :rating="m.vote_average ?? null"
-            size="sm"
+            size="full"
           />
         </div>
 
