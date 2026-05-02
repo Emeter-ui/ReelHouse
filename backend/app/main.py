@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 from fastapi import FastAPI
-app = FastAPI()  # ← must be named "app"
-
-from fastapi import FastAPI
+app = FastAPI()
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import get_settings
