@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 from fastapi import FastAPI
-app = FastAPI()
 from fastapi.middleware.cors import CORSMiddleware
 
-from .config import get_settings
-from .routes import healthz, proxy, stream, tmdb
+from config import get_settings
+from routes import healthz, proxy, stream, tmdb
 
 settings = get_settings()
 
@@ -23,7 +22,6 @@ app.include_router(healthz.router, prefix="/api")
 app.include_router(tmdb.router, prefix="/api")
 app.include_router(stream.router, prefix="/api")
 app.include_router(proxy.router, prefix="/api")
-
 
 @app.get("/")
 def root() -> dict[str, str]:
