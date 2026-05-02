@@ -20,17 +20,31 @@ function unwrap<T>(v: R<T>): T {
   return v as T
 }
 
+// Building the query string into the URL (and passing the URL as a function)
+// is what makes useFetch re-evaluate when the underlying refs change. Passing
+// `query: () => ({...})` alongside a static URL string was being snapshotted
+// once at setup before the refs had values, sending an empty querystring and
+// getting a 422 from FastAPI for missing required fields.
+function buildQuery(params: Record<string, string | number | undefined | null>): string {
+  const entries = Object.entries(params).filter(
+    ([, v]) => v !== undefined && v !== null && v !== '',
+  )
+  if (!entries.length) return ''
+  const sp = new URLSearchParams()
+  for (const [k, v] of entries) sp.set(k, String(v))
+  return `?${sp.toString()}`
+}
+
 export function useMovieStream(tmdbId: R<number | string>, title: R<string>, year?: R<number | undefined>) {
   const { public: { apiBase } } = useRuntimeConfig()
-  return useFetch<StreamResolveResponse>(`${apiBase}/api/stream/movie`, {
-    query: () => ({
+  return useFetch<StreamResolveResponse>(
+    () => `${apiBase}/api/stream/movie${buildQuery({
       tmdb_id: unwrap(tmdbId),
       title: unwrap(title),
       year: year !== undefined ? unwrap(year) : undefined,
-    }),
-    server: false,
-    lazy: true,
-  })
+    })}`,
+    { server: false, lazy: true },
+  )
 }
 
 export function useSeriesStream(
@@ -40,16 +54,15 @@ export function useSeriesStream(
   episode: R<number>,
 ) {
   const { public: { apiBase } } = useRuntimeConfig()
-  return useFetch<StreamResolveResponse>(`${apiBase}/api/stream/series`, {
-    query: () => ({
+  return useFetch<StreamResolveResponse>(
+    () => `${apiBase}/api/stream/series${buildQuery({
       tmdb_id: unwrap(tmdbId),
       title: unwrap(title),
       season: unwrap(season),
       episode: unwrap(episode),
-    }),
-    server: false,
-    lazy: true,
-  })
+    })}`,
+    { server: false, lazy: true },
+  )
 }
 
 /**
@@ -67,8 +80,15 @@ export function proxiedUrl(rawUrl: string) {
  */
 export async function canFetchDirect(url: string): Promise<boolean> {
   try {
-    const res = await fetch(url, { method: 'HEAD', mode: 'cors' })
-    return res.ok
+    // Some CDNs allow HEAD requests with CORS but block GET requests.
+    // We probe with a 1-byte GET request to verify real CORS support.
+    const res = await fetch(url, { 
+      method: 'GET', 
+      mode: 'cors',
+      headers: { 'Range': 'bytes=0-0' }
+    })
+    // 200 OK or 206 Partial Content both mean we can reach it.
+    return res.ok || res.status === 206
   } catch {
     return false
   }

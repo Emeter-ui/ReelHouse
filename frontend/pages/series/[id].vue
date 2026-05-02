@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useTmdb, tmdbImg } from '~/composables/useTmdb'
 import { useMyList } from '~/composables/useMyList'
+import type { StreamOption, StreamResolveResponse } from '~/composables/useStream'
 const route = useRoute()
 const id = computed(() => Number(route.params.id))
 
@@ -48,8 +49,12 @@ const seasons = computed<SeasonStub[]>(() =>
 )
 
 const activeSeason = ref<number | null>(null)
+const activeEpisode = ref<number>(1)
 watch(seasons, (s) => {
   if (s.length && activeSeason.value === null) activeSeason.value = s[0].season_number
+})
+watch(activeSeason, () => {
+  activeEpisode.value = 1
 })
 
 const { data: seasonData, pending: seasonPending } = await useTmdb<{ episodes: Episode[] }>(
@@ -58,11 +63,107 @@ const { data: seasonData, pending: seasonPending } = await useTmdb<{ episodes: E
   { lazy: true },
 )
 
+const episodes = computed<Episode[]>(() => seasonData.value?.episodes ?? [])
+watch(episodes, (eps) => {
+  if (eps.length && !eps.some((e) => e.episode_number === activeEpisode.value)) {
+    activeEpisode.value = eps[0].episode_number
+  }
+})
+
 const cast = computed(() => series.value?.credits?.cast?.slice(0, 8) ?? [])
 const similar = computed(() => series.value?.similar?.results?.slice(0, 12) ?? [])
 const year = computed(() =>
   series.value?.first_air_date ? series.value.first_air_date.slice(0, 4) : '',
 )
+
+const { public: { apiBase } } = useRuntimeConfig()
+const pickerOpen = ref(false)
+const pickerLoading = ref(false)
+const pickerError = ref<string | null>(null)
+const qualities = ref<StreamOption[]>([])
+const downloadButton = ref<HTMLButtonElement | null>(null)
+const pickerEl = ref<HTMLDivElement | null>(null)
+
+const formatBytes = (n: number) => {
+  if (n >= 1e9) return `${(n / 1e9).toFixed(2)} GB`
+  if (n >= 1e6) return `${(n / 1e6).toFixed(0)} MB`
+  return `${(n / 1e3).toFixed(0)} KB`
+}
+
+const fetchQualities = async () => {
+  if (!series.value || activeSeason.value === null || activeEpisode.value === null) return
+  pickerLoading.value = true
+  pickerError.value = null
+  try {
+    const params = new URLSearchParams({
+      tmdb_id: String(series.value.id),
+      title: series.value.name,
+      season: String(activeSeason.value),
+      episode: String(activeEpisode.value)
+    })
+    if (year.value) params.set('year', year.value)
+    const res = await $fetch<StreamResolveResponse>(
+      `${apiBase}/api/stream/series?${params.toString()}`,
+    )
+    if (!res?.qualities?.length) throw new Error('no qualities')
+    qualities.value = res.qualities
+  } catch (e: any) {
+    const status = e?.response?.status ?? e?.statusCode
+    pickerError.value =
+      status === 404 ? 'Not available from source.' : 'Download failed.'
+  } finally {
+    pickerLoading.value = false
+  }
+}
+
+watch([activeSeason, activeEpisode], () => {
+  pickerOpen.value = false
+  qualities.value = []
+})
+
+const togglePicker = async () => {
+  if (pickerOpen.value) {
+    pickerOpen.value = false
+    return
+  }
+  pickerOpen.value = true
+  if (!qualities.value.length && !pickerError.value) {
+    await fetchQualities()
+  }
+}
+
+const downloadOption = (opt: StreamOption) => {
+  if (!series.value) return
+  const safe = `${series.value.name} S${activeSeason.value}E${activeEpisode.value}`.replace(/[\\/:*?"<>|]+/g, ' ').trim()
+  const a = document.createElement('a')
+  a.href = opt.url
+  a.download = `${safe}.mp4`
+  a.target = '_blank'
+  a.rel = 'noopener'
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  pickerOpen.value = false
+}
+
+const onDocClick = (e: MouseEvent) => {
+  if (!pickerOpen.value) return
+  const t = e.target as Node
+  if (pickerEl.value?.contains(t) || downloadButton.value?.contains(t)) return
+  pickerOpen.value = false
+}
+const onKey = (e: KeyboardEvent) => {
+  if (e.key === 'Escape') pickerOpen.value = false
+}
+
+onMounted(() => {
+  document.addEventListener('click', onDocClick)
+  document.addEventListener('keydown', onKey)
+})
+onBeforeUnmount(() => {
+  document.removeEventListener('click', onDocClick)
+  document.removeEventListener('keydown', onKey)
+})
 </script>
 
 <template>
@@ -99,9 +200,70 @@ const year = computed(() =>
               <span v-for="g in series.genres" :key="g.id" class="chip">{{ g.name }}</span>
             </div>
             <p class="text-slate-300 max-w-3xl">{{ series.overview }}</p>
-            <div class="flex flex-wrap gap-3 pt-2">
-              <NuxtLink :to="`/watch/series/${series.id}/s/${activeSeason ?? 1}/e/1`" class="btn-primary">▶ Play S{{ activeSeason ?? 1 }} E1</NuxtLink>
-              <button class="btn-ghost" @click="toggleList">
+            <div class="flex flex-wrap items-center gap-3 pt-2">
+              <select
+                v-if="seasons.length"
+                v-model.number="activeSeason"
+                class="rounded-md bg-ink-900 border border-white/10 px-3 py-2 text-sm h-[42px]"
+              >
+                <option v-for="s in seasons" :key="s.id" :value="s.season_number">
+                  {{ s.name }} ({{ s.episode_count }} ep)
+                </option>
+              </select>
+              <select
+                v-if="episodes.length"
+                v-model.number="activeEpisode"
+                class="rounded-md bg-ink-900 border border-white/10 px-3 py-2 text-sm h-[42px]"
+              >
+                <option v-for="e in episodes" :key="e.id" :value="e.episode_number">
+                  E{{ e.episode_number }} — {{ e.name }}
+                </option>
+              </select>
+              <NuxtLink :to="`/watch/series/${series.id}/s/${activeSeason ?? 1}/e/${activeEpisode}`" class="btn-primary shrink-0">▶ Play</NuxtLink>
+              <div class="relative shrink-0">
+                <button
+                  ref="downloadButton"
+                  class="btn-ghost"
+                  :aria-expanded="pickerOpen"
+                  aria-haspopup="menu"
+                  @click="togglePicker"
+                >
+                  ⬇ Download
+                </button>
+                <div
+                  v-if="pickerOpen"
+                  ref="pickerEl"
+                  role="menu"
+                  class="absolute z-20 mt-2 right-0 min-w-[14rem] bg-ink-900
+                         ring-1 ring-white/10 rounded-lg shadow-xl p-1"
+                >
+                  <div
+                    v-if="pickerLoading"
+                    class="px-3 py-2 text-sm text-slate-400"
+                  >
+                    Loading qualities…
+                  </div>
+                  <div
+                    v-else-if="pickerError"
+                    class="px-3 py-2 text-sm text-red-400"
+                  >
+                    {{ pickerError }}
+                  </div>
+                  <button
+                    v-for="q in qualities"
+                    v-else
+                    :key="q.url"
+                    role="menuitem"
+                    class="w-full flex items-center justify-between gap-4 px-3 py-2
+                           rounded-md text-sm hover:bg-white/5"
+                    @click="downloadOption(q)"
+                  >
+                    <span class="font-medium">{{ q.resolution }}</span>
+                    <span class="text-slate-400">{{ formatBytes(q.size_bytes) }}</span>
+                  </button>
+                </div>
+              </div>
+              <button class="btn-ghost shrink-0" @click="toggleList">
                 {{ inList ? '✓ In My List' : '+ My List' }}
               </button>
             </div>
@@ -112,15 +274,6 @@ const year = computed(() =>
       <section class="max-w-7xl mx-auto px-6 my-8">
         <div class="flex items-center justify-between mb-4 gap-4 flex-wrap">
           <h2 class="text-lg font-semibold">Episodes</h2>
-          <select
-            v-if="seasons.length"
-            v-model.number="activeSeason"
-            class="rounded-md bg-ink-900 border border-white/10 px-3 py-2 text-sm"
-          >
-            <option v-for="s in seasons" :key="s.id" :value="s.season_number">
-              {{ s.name }} ({{ s.episode_count }} ep)
-            </option>
-          </select>
         </div>
 
         <div v-if="seasonPending && !seasonData" class="text-slate-400 py-8 text-center">Loading episodes…</div>
