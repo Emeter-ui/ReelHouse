@@ -3,8 +3,8 @@ from __future__ import annotations
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from config import get_settings
-from routes import healthz, proxy, stream, tmdb
+from .config import get_settings
+from .routes import healthz, proxy, stream, tmdb
 
 settings = get_settings()
 

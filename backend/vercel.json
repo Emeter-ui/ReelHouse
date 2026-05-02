@@ -10,8 +10,5 @@
             "src": "/(.*)",
             "dest": "app/main.py"
         }
-    ],
-    "env": {
-        "PYTHONPATH": "/var/task/app"
-    }
+    ]
 }
