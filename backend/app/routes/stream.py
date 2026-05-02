@@ -5,6 +5,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 from moviebox_api.v1.constants import SubjectType
+from moviebox_api.v3.constants import ResolutionType
 from moviebox_api.v3.core import (
     DownloadableCaptionFileDetails,
     DownloadableVideoFilesDetail,
@@ -52,7 +53,79 @@ def _pick_best_video(
         videos = [v for v in videos if v.season == season and v.episode == episode]
     if not videos:
         return None
+    
+    # Prefer non-HEVC (e.g. h264) for web playback.
+    def is_hevc(v: VideoFileMetadata) -> bool:
+        codec = (v.codec_name or "").lower()
+        url = str(v.resource_link).lower()
+        return "hevc" in codec or "265" in codec or "/h265/" in url or "/hevc/" in url
+        
+    non_hevc = [v for v in videos if not is_hevc(v)]
+    if non_hevc:
+        return max(non_hevc, key=lambda v: v.resolution)
+        
     return max(videos, key=lambda v: v.resolution)
+
+
+# MovieBox caps per_page at 20, so a long-running series spans many pages.
+# Without paging, we silently miss every episode after the first 20.
+async def fetch_all_video_files(
+    client: MovieBoxHttpClient,
+    subject_id: str,
+    *,
+    max_pages: int = 50,
+    trace: list[dict[str, Any]] | None = None,
+) -> list[VideoFileMetadata]:
+    # The MovieBox /resource endpoint returns at most one quality tier per call.
+    # - resolution=BEST  → only episodes that have a 1080p archive (drops episodes
+    #                      that only exist at lower qualities, making them invisible).
+    # - resolution=UNSPECIFIED → returns each episode at its lowest-published
+    #                            quality (typically 360p), but for *every* episode.
+    # Hitting both and merging is the only way to get complete episode coverage
+    # AND high-resolution files where they exist.
+    collected: list[VideoFileMetadata] = []
+    # Include codec_name in the dedup key so h264 and h265 variants of the same
+    # (season, episode, resolution) both survive if MovieBox happens to ship both.
+    seen_keys: set[tuple[int | None, int | None, int | None, str | None]] = set()
+
+    for pass_label, res in (("best", None), ("unspecified", ResolutionType.UNSPECIFIED)):
+        downloads = (
+            DownloadableVideoFilesDetail(client_session=client)
+            if res is None
+            else DownloadableVideoFilesDetail(client_session=client, resolution=res)
+        )
+        page = 1
+        while page <= max_pages:
+            downloads.page = page
+            try:
+                chunk = await downloads.get_content_model(subject_id=subject_id)
+            except Exception as exc:
+                if trace is not None:
+                    trace.append({"pass": pass_label, "page": page, "error": str(exc)})
+                break
+            if trace is not None:
+                trace.append({
+                    "pass": pass_label,
+                    "page": page,
+                    "items": len(chunk.list),
+                    "has_more": chunk.pager.has_more,
+                    "next_page": chunk.pager.next_page,
+                    "total_count": chunk.pager.total_count,
+                    "per_page": chunk.pager.per_page,
+                })
+            for v in chunk.list:
+                key = (v.season, v.episode, v.resolution, getattr(v, "codec_name", None))
+                if key in seen_keys:
+                    continue
+                seen_keys.add(key)
+                collected.append(v)
+            if not chunk.pager.has_more:
+                break
+            next_page = chunk.pager.next_page or (page + 1)
+            if next_page <= page:
+                break
+            page = next_page
+    return collected
 
 
 async def _resolve(
@@ -68,13 +141,11 @@ async def _resolve(
         if match is None:
             return None
 
-        downloads = DownloadableVideoFilesDetail(client_session=client)
-        try:
-            files = await downloads.get_content_model(subject_id=match.subject_id)
-        except Exception:
+        all_files = await fetch_all_video_files(client, match.subject_id)
+        if not all_files:
             return None
 
-        chosen = _pick_best_video(files.list, season=season, episode=episode)
+        chosen = _pick_best_video(all_files, season=season, episode=episode)
         if chosen is None:
             return None
 
@@ -92,15 +163,16 @@ async def _resolve(
 
         # For series, restrict to the same (season, episode); else use all files.
         relevant = (
-            [v for v in files.list if v.season == season and v.episode == episode]
+            [v for v in all_files if v.season == season and v.episode == episode]
             if season is not None and episode is not None
-            else files.list
+            else all_files
         )
         qualities = [
             {
                 "resolution": f"{v.resolution}p",
                 "size_bytes": v.size,
                 "url": str(v.resource_link),
+                "codec": v.codec_name,
             }
             for v in relevant
             if v.resolution

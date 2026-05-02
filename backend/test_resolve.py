@@ -8,6 +8,6 @@ from moviebox_api.v1.constants import SubjectType
 
 async def main():
     res = await _resolve('Kung Fu Panda 4', 2024, SubjectType.MOVIES)
-    print(res['qualities'])
+    print("Kung Fu Panda 4:", [{'res': q['resolution'], 'url': q['url']} for q in res['qualities']])
 
 asyncio.run(main())

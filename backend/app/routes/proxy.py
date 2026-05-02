@@ -6,6 +6,7 @@ so seeking works.
 """
 from __future__ import annotations
 
+import mimetypes
 from urllib.parse import urlparse
 
 import httpx
@@ -53,7 +54,7 @@ def _is_allowed_target(url: str) -> bool:
     return True
 
 
-@router.get("/proxy")
+@router.api_route("/proxy", methods=["GET", "HEAD"])
 async def proxy(url: str, request: Request) -> StreamingResponse:
     if not _is_allowed_target(url):
         raise HTTPException(status_code=400, detail={"error": "invalid url"})
@@ -68,7 +69,7 @@ async def proxy(url: str, request: Request) -> StreamingResponse:
     if incoming_range:
         upstream_headers["Range"] = incoming_range
 
-    req = _client.build_request("GET", url, headers=upstream_headers)
+    req = _client.build_request(request.method, url, headers=upstream_headers)
     upstream = await _client.send(req, stream=True)
 
     if upstream.status_code >= 400:
@@ -85,6 +86,12 @@ async def proxy(url: str, request: Request) -> StreamingResponse:
     response_headers.setdefault("accept-ranges", "bytes")
 
     media_type = upstream.headers.get("content-type", "application/octet-stream")
+    
+    # If content-type is missing or generic, try guessing from URL.
+    if media_type == "application/octet-stream" or not media_type:
+        guessed, _ = mimetypes.guess_type(url)
+        if guessed:
+            media_type = guessed
 
     async def iter_bytes():
         try:
@@ -99,3 +106,4 @@ async def proxy(url: str, request: Request) -> StreamingResponse:
         headers=response_headers,
         media_type=media_type,
     )
+
