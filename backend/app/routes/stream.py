@@ -9,6 +9,7 @@ from moviebox_api.v3.constants import ResolutionType
 from moviebox_api.v3.core import (
     DownloadableCaptionFileDetails,
     DownloadableVideoFilesDetail,
+    ItemDetails,
     Search,
 )
 from moviebox_api.v3.http_client import MovieBoxHttpClient
@@ -128,6 +129,22 @@ async def fetch_all_video_files(
     return collected
 
 
+async def _original_dub_subject_id(
+    client: MovieBoxHttpClient, subject_id: str
+) -> str:
+    # MovieBox indexes localized dubs (Hindi, Tamil, etc.) under separate
+    # subject_ids and often ranks them ahead of the English original in search.
+    # Redirect to the Original dub when the matched subject is a localized one.
+    try:
+        details = await ItemDetails(client_session=client).get_content_model(subject_id)
+    except Exception:
+        return subject_id
+    for dub in details.dubs:
+        if dub.original:
+            return dub.subject_id
+    return subject_id
+
+
 async def _resolve(
     title: str,
     year: int | None,
@@ -141,7 +158,8 @@ async def _resolve(
         if match is None:
             return None
 
-        all_files = await fetch_all_video_files(client, match.subject_id)
+        target_subject_id = await _original_dub_subject_id(client, match.subject_id)
+        all_files = await fetch_all_video_files(client, target_subject_id)
         if not all_files:
             return None
 
@@ -153,7 +171,7 @@ async def _resolve(
         try:
             cap_meta = DownloadableCaptionFileDetails(client_session=client)
             cap = await cap_meta.get_content_model(
-                subject_id=match.subject_id, resource=chosen
+                subject_id=target_subject_id, resource=chosen
             )
             captions = [
                 {"lang": c.lan_name, "url": str(c.url)} for c in cap.captions
