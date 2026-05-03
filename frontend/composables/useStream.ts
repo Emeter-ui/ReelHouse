@@ -67,13 +67,11 @@ export function useSeriesStream(
 
 /**
  * Build a backend byte-proxy URL. Used as the fallback `<source>` when a
- * direct CDN URL fails the CORS / Referer probe. The `video.mp4` suffix is
- * cosmetic but required: iOS Safari refuses to play video sources whose URL
- * path has no recognizable media extension.
+ * direct CDN URL fails the CORS / Referer probe.
  */
 export function proxiedUrl(rawUrl: string) {
   const { public: { apiBase } } = useRuntimeConfig()
-  return `${apiBase}/api/proxy/video.mp4?url=${encodeURIComponent(rawUrl)}`
+  return `${apiBase}/api/proxy?url=${encodeURIComponent(rawUrl)}`
 }
 
 /**
