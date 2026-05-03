@@ -117,7 +117,6 @@ const downloadFilename = computed(() => {
 
     <video
       v-else-if="finalSrc"
-      :src="finalSrc"
       controls
       autoplay
       playsinline
@@ -126,6 +125,7 @@ const downloadFilename = computed(() => {
       @timeupdate="onTimeUpdate"
       @error="onVideoError"
     >
+      <source :src="finalSrc" type="video/mp4" />
       <track
         v-for="c in resolved.captions"
         :key="c.url"
