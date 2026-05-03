@@ -24,9 +24,10 @@ type Series = {
   similar?: { results: Array<{ id: number; name: string; poster_path: string | null; first_air_date?: string; vote_average?: number }> }
 }
 
-const { data: series, pending, error } = await useTmdb<Series>(
+const { data: series, pending, error } = useTmdb<Series>(
   () => `tv/${id.value}`,
   { append_to_response: 'credits,similar' },
+  { lazy: true },
 )
 
 useHead({ title: () => `${series.value?.name ?? 'Series'} — Reelhouse` })

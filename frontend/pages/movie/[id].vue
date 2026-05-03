@@ -22,9 +22,10 @@ type Movie = {
   similar?: { results: Array<{ id: number; title: string; poster_path: string | null; release_date?: string; vote_average?: number }> }
 }
 
-const { data: movie, pending, error } = await useTmdb<Movie>(
+const { data: movie, pending, error } = useTmdb<Movie>(
   () => `movie/${id.value}`,
   { append_to_response: 'credits,similar' },
+  { lazy: true },
 )
 
 useHead({ title: () => `${movie.value?.title ?? 'Movie'} — Reelhouse` })

@@ -1,7 +1,4 @@
 <script setup lang="ts">
-import 'vidstack/player/styles/default/theme.css'
-import 'vidstack/player/styles/default/layouts/video.css'
-
 import { canFetchDirect, proxiedUrl, type StreamResolveResponse } from '~/composables/useStream'
 import { useContinueWatching } from '~/composables/useContinueWatching'
 
@@ -24,26 +21,29 @@ const finalSrc = ref<string | null>(null)
 const probeStatus = ref<'idle' | 'probing' | 'direct' | 'proxied' | 'failed'>('idle')
 const videoError = ref<string | null>(null)
 
-// For Vidstack custom elements
-onMounted(() => {
-  import('vidstack/elements')
-})
-
 const onVideoError = (e: any) => {
-  const err = e.detail
-  videoError.value = err?.message || 'Playback error'
+  const err = e.target?.error
+  const codeMap: Record<number, string> = {
+    1: 'aborted',
+    2: 'network error',
+    3: 'decode error (codec not supported by your browser — likely HEVC/H.265)',
+    4: 'source not supported',
+  }
+  videoError.value = err ? (codeMap[err.code] || `error code ${err.code}`) : 'Playback error'
   probeStatus.value = 'failed'
 }
 
 watch(
   () => props.resolved?.stream_url,
   async (url) => {
+    console.log('[player] resolved.stream_url =', url)
     if (!url) {
       finalSrc.value = null
       return
     }
     probeStatus.value = 'probing'
     const direct = await canFetchDirect(url)
+    console.log('[player] canFetchDirect =', direct)
     if (direct) {
       finalSrc.value = url
       probeStatus.value = 'direct'
@@ -51,11 +51,10 @@ watch(
       finalSrc.value = proxiedUrl(url)
       probeStatus.value = 'proxied'
     }
+    console.log('[player] finalSrc =', finalSrc.value, 'probeStatus =', probeStatus.value)
   },
   { immediate: true },
 )
-
-const playerRef = ref<any>(null)
 
 // Restore previous position
 const previous = computed(() =>
@@ -116,29 +115,26 @@ const downloadFilename = computed(() => {
       </div>
     </div>
 
-    <media-player
+    <video
       v-else-if="finalSrc"
-      ref="playerRef"
       :src="finalSrc"
+      controls
       autoplay
       playsinline
-      class="w-full h-full"
-      @loaded-metadata="onLoadedMetadata"
-      @time-update="onTimeUpdate"
+      class="w-full h-full bg-black"
+      @loadedmetadata="onLoadedMetadata"
+      @timeupdate="onTimeUpdate"
       @error="onVideoError"
     >
-      <media-provider>
-        <track
-          v-for="c in resolved.captions"
-          :key="c.url"
-          kind="subtitles"
-          :label="c.lang"
-          :srclang="c.lang.slice(0, 2).toLowerCase()"
-          :src="proxiedUrl(c.url)"
-        />
-      </media-provider>
-      <media-video-layout />
-    </media-player>
+      <track
+        v-for="c in resolved.captions"
+        :key="c.url"
+        kind="subtitles"
+        :label="c.lang"
+        :srclang="c.lang.slice(0, 2).toLowerCase()"
+        :src="proxiedUrl(c.url)"
+      />
+    </video>
 
     <div
       v-if="probeStatus === 'proxied'"
@@ -168,10 +164,3 @@ const downloadFilename = computed(() => {
     </div>
   </div>
 </template>
-
-<style scoped>
-media-player {
-  --video-brand: #eab308; /* accent-gold */
-}
-</style>
-

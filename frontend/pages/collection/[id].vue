@@ -18,8 +18,10 @@ type Collection = {
   parts: Part[]
 }
 
-const { data, pending, error } = await useTmdb<Collection>(
+const { data, pending, error } = useTmdb<Collection>(
   () => `collection/${id.value}`,
+  {},
+  { lazy: true },
 )
 
 useHead({ title: () => `${data.value?.name ?? 'Collection'} — Reelhouse` })

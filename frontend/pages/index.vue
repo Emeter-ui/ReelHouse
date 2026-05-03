@@ -16,7 +16,7 @@ type TmdbItem = {
   media_type?: string
 }
 
-const { data: trending } = await useTmdb<{ results: TmdbItem[] }>('trending/all/week')
+const { data: trending } = useTmdb<{ results: TmdbItem[] }>('trending/all/week', {}, { lazy: true })
 const heroItems = computed<TmdbItem[]>(() => (trending.value?.results ?? []).slice(0, 5))
 
 const movieTabs = [
