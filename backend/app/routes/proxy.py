@@ -54,12 +54,8 @@ def _is_allowed_target(url: str) -> bool:
     return True
 
 
-# Filename suffix is cosmetic — iOS Safari rejects video sources whose URL path
-# has no recognizable media extension before it ever fetches the bytes. The path
-# also accepts no filename ("/proxy") for backward compat with old clients.
 @router.api_route("/proxy", methods=["GET", "HEAD"])
-@router.api_route("/proxy/{filename:path}", methods=["GET", "HEAD"])
-async def proxy(url: str, request: Request, filename: str = "") -> StreamingResponse:
+async def proxy(url: str, request: Request) -> StreamingResponse:
     if not _is_allowed_target(url):
         raise HTTPException(status_code=400, detail={"error": "invalid url"})
 
