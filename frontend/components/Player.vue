@@ -83,6 +83,15 @@ const onTimeUpdate = (e: any) => {
   })
 }
 
+// Safari needs an explicit hvc1 codec hint to engage its HEVC decoder; without
+// it, plain video/mp4 makes Safari assume H.264 and reject HEVC files outright.
+const sourceType = computed(() => {
+  const u = (props.resolved?.stream_url ?? '').toLowerCase()
+  return u.includes('/h265/') || u.includes('/hevc/')
+    ? 'video/mp4; codecs="hvc1"'
+    : 'video/mp4'
+})
+
 onBeforeUnmount(() => cw.flush())
 
 const downloadFilename = computed(() => {
@@ -125,7 +134,7 @@ const downloadFilename = computed(() => {
       @timeupdate="onTimeUpdate"
       @error="onVideoError"
     >
-      <source :src="finalSrc" type="video/mp4" />
+      <source :src="finalSrc" :type="sourceType" />
       <track
         v-for="c in resolved.captions"
         :key="c.url"
