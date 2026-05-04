@@ -19,6 +19,7 @@ class Candidate:
     subject_id: str
     title: str
     year: int | None
+    detail_path: str | None = None
 
 
 def best_match(

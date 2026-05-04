@@ -55,14 +55,22 @@ def _is_allowed_target(url: str) -> bool:
 
 
 @router.api_route("/proxy", methods=["GET", "HEAD"])
-async def proxy(url: str, request: Request) -> StreamingResponse:
+async def proxy(url: str, request: Request, referer: str | None = None) -> StreamingResponse:
     if not _is_allowed_target(url):
         raise HTTPException(status_code=400, detail={"error": "invalid url"})
 
     parsed = urlparse(url)
     upstream_headers = dict(UPSTREAM_HEADERS)
-    upstream_headers["Referer"] = f"{parsed.scheme}://{parsed.netloc}/"
-    upstream_headers["Origin"] = f"{parsed.scheme}://{parsed.netloc}"
+    # MovieBox's CDN allowlists Referer against its play domain, so prefer the
+    # caller-supplied hint when present. Fall back to the URL's own host for
+    # everything else (subtitles etc.).
+    if referer and urlparse(referer).scheme in ("http", "https"):
+        upstream_headers["Referer"] = referer
+        ref = urlparse(referer)
+        upstream_headers["Origin"] = f"{ref.scheme}://{ref.netloc}"
+    else:
+        upstream_headers["Referer"] = f"{parsed.scheme}://{parsed.netloc}/"
+        upstream_headers["Origin"] = f"{parsed.scheme}://{parsed.netloc}"
 
     # Forward Range from the browser so video seeking works.
     incoming_range = request.headers.get("range")

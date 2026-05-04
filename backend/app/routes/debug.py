@@ -10,12 +10,72 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
 from moviebox_api.v1.constants import SubjectType
-from moviebox_api.v3.core import Search
+from moviebox_api.v3.constants import ResolutionType
+from moviebox_api.v3.core import DownloadableVideoFilesDetail, Search
 from moviebox_api.v3.http_client import MovieBoxHttpClient
+from moviebox_api.v3.models.downloadables import VideoFileMetadata
 from moviebox_api.v3.urls import PLAY_INFO_PATH, RESOURCE_PATH
 
 from ..matching import Candidate, best_match
-from .stream import fetch_all_video_files
+
+
+# MovieBox caps per_page at 20, so a long-running series spans many pages.
+# Without paging, we silently miss every episode after the first 20.
+async def fetch_all_video_files(
+    client: MovieBoxHttpClient,
+    subject_id: str,
+    *,
+    max_pages: int = 50,
+    trace: list[dict[str, Any]] | None = None,
+) -> list[VideoFileMetadata]:
+    # The MovieBox /resource endpoint returns at most one quality tier per call.
+    # - resolution=BEST  → only episodes that have a 1080p archive (drops episodes
+    #                      that only exist at lower qualities, making them invisible).
+    # - resolution=UNSPECIFIED → returns each episode at its lowest-published
+    #                            quality (typically 360p), but for *every* episode.
+    # Hitting both and merging is the only way to get complete episode coverage
+    # AND high-resolution files where they exist.
+    collected: list[VideoFileMetadata] = []
+    seen_keys: set[tuple[int | None, int | None, int | None, str | None]] = set()
+
+    for pass_label, res in (("best", None), ("unspecified", ResolutionType.UNSPECIFIED)):
+        downloads = (
+            DownloadableVideoFilesDetail(client_session=client)
+            if res is None
+            else DownloadableVideoFilesDetail(client_session=client, resolution=res)
+        )
+        page = 1
+        while page <= max_pages:
+            downloads.page = page
+            try:
+                chunk = await downloads.get_content_model(subject_id=subject_id)
+            except Exception as exc:
+                if trace is not None:
+                    trace.append({"pass": pass_label, "page": page, "error": str(exc)})
+                break
+            if trace is not None:
+                trace.append({
+                    "pass": pass_label,
+                    "page": page,
+                    "items": len(chunk.list),
+                    "has_more": chunk.pager.has_more,
+                    "next_page": chunk.pager.next_page,
+                    "total_count": chunk.pager.total_count,
+                    "per_page": chunk.pager.per_page,
+                })
+            for v in chunk.list:
+                key = (v.season, v.episode, v.resolution, getattr(v, "codec_name", None))
+                if key in seen_keys:
+                    continue
+                seen_keys.add(key)
+                collected.append(v)
+            if not chunk.pager.has_more:
+                break
+            next_page = chunk.pager.next_page or (page + 1)
+            if next_page <= page:
+                break
+            page = next_page
+    return collected
 
 router = APIRouter()
 
