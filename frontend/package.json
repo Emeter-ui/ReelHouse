@@ -12,7 +12,9 @@
   },
   "dependencies": {
     "@vueuse/core": "^11.2.0",
+    "hls.js": "^1.6.16",
     "nuxt": "^3.14.0",
+    "plyr": "^3.8.4",
     "vidstack": "^1.12.12",
     "vue": "^3.5.13",
     "vue-router": "^4.4.5"

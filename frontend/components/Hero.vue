@@ -47,40 +47,74 @@ const playLink = (it?: TmdbItem) => {
 <template>
   <section
     v-if="current"
-    class="relative overflow-hidden h-[55vh] min-h-[360px] max-h-[640px]"
+    class="relative overflow-hidden h-[65vh] min-h-[480px] max-h-[800px] flex items-end"
   >
-    <img
-      v-if="current.backdrop_path"
-      :src="tmdbImg(current.backdrop_path, 'original')"
-      :alt="titleOf(current)"
-      class="absolute inset-0 w-full h-full object-cover"
-    />
-    <div class="absolute inset-0 bg-hero-fade" />
+    <!-- Background Image with Transition -->
+    <Transition
+      enter-active-class="transition-opacity duration-1000 ease-in-out"
+      enter-from-class="opacity-0"
+      enter-to-class="opacity-100"
+      leave-active-class="transition-opacity duration-1000 ease-in-out"
+      leave-from-class="opacity-100"
+      leave-to-class="opacity-0"
+      mode="out-in"
+    >
+      <div :key="current.id" class="absolute inset-0">
+        <img
+          v-if="current.backdrop_path"
+          :src="tmdbImg(current.backdrop_path, 'original')"
+          :alt="titleOf(current)"
+          class="absolute inset-0 w-full h-full object-cover scale-105 animate-slow-zoom"
+        />
+        <div class="absolute inset-0 bg-hero-fade" />
+        <div class="absolute inset-0 bg-gradient-to-r from-ink-950/80 via-ink-950/20 to-transparent md:block hidden" />
+      </div>
+    </Transition>
 
-    <div class="relative h-full max-w-7xl mx-auto px-6 flex flex-col justify-end pb-10">
-      <div class="max-w-2xl space-y-3">
-        <div class="flex items-center gap-2 text-xs">
-          <span v-if="current.vote_average" class="chip text-accent-gold">★ {{ current.vote_average?.toFixed(1) }}</span>
-          <span v-if="yearOf(current)" class="chip">{{ yearOf(current) }}</span>
-        </div>
-        <h1 class="text-3xl md:text-5xl font-bold tracking-tight">
-          {{ titleOf(current) }}
-        </h1>
-        <p class="text-slate-300 line-clamp-3 text-sm md:text-base">
-          {{ current.overview }}
-        </p>
-        <div class="flex items-center gap-3 pt-1">
-          <NuxtLink :to="playLink(current)" class="btn-primary">▶ Play</NuxtLink>
-          <NuxtLink :to="detailLink(current)" class="btn-ghost">Details</NuxtLink>
-        </div>
+    <div class="relative w-full max-w-7xl mx-auto px-6 pb-16 md:pb-24 z-10">
+      <div class="max-w-3xl space-y-6">
+        <Transition
+          enter-active-class="transition-all duration-700 delay-300 ease-out"
+          enter-from-class="translate-y-8 opacity-0"
+          enter-to-class="translate-y-0 opacity-100"
+          appear
+        >
+          <div :key="current.id" class="space-y-4">
+            <div class="flex items-center gap-3">
+              <span v-if="current.vote_average" class="chip bg-accent-gold/20 text-accent-gold border border-accent-gold/20">
+                ★ {{ current.vote_average?.toFixed(1) }}
+              </span>
+              <span v-if="yearOf(current)" class="chip">{{ yearOf(current) }}</span>
+              <span class="chip bg-white/5 text-white/60">Trending</span>
+            </div>
+            
+            <h1 class="text-4xl md:text-7xl font-extrabold tracking-tight leading-[1.1] text-white drop-shadow-2xl">
+              {{ titleOf(current) }}
+            </h1>
+            
+            <p class="text-slate-300 line-clamp-3 text-base md:text-lg max-w-2xl leading-relaxed font-medium">
+              {{ current.overview }}
+            </p>
+
+            <div class="flex items-center gap-4 pt-4">
+              <NuxtLink :to="playLink(current)" class="btn-accent px-8 py-4 text-base">
+                <span class="text-lg">▶</span> Watch Now
+              </NuxtLink>
+              <NuxtLink :to="detailLink(current)" class="btn-ghost px-8 py-4 text-base">
+                More Info
+              </NuxtLink>
+            </div>
+          </div>
+        </Transition>
       </div>
 
-      <div v-if="items.length > 1" class="absolute bottom-4 right-6 flex gap-1">
+      <!-- Indicators -->
+      <div v-if="items.length > 1" class="absolute bottom-10 right-6 flex items-center gap-3">
         <button
           v-for="(_, i) in items.slice(0, 5)"
           :key="i"
-          class="w-8 h-1 rounded-full transition-colors"
-          :class="i === idx ? 'bg-white' : 'bg-white/30'"
+          class="h-1.5 rounded-full transition-all duration-500"
+          :class="i === idx ? 'w-10 bg-white' : 'w-4 bg-white/20 hover:bg-white/40'"
           :aria-label="`Slide ${i + 1}`"
           @click="idx = i"
         />
@@ -88,3 +122,13 @@ const playLink = (it?: TmdbItem) => {
     </div>
   </section>
 </template>
+
+<style scoped>
+@keyframes slow-zoom {
+  0% { transform: scale(1); }
+  100% { transform: scale(1.1); }
+}
+.animate-slow-zoom {
+  animation: slow-zoom 20s linear infinite alternate;
+}
+</style>

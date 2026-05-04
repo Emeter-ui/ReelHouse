@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useTmdb, tmdbImg } from '~/composables/useTmdb'
 import { useMyList } from '~/composables/useMyList'
-import type { StreamOption, StreamResolveResponse } from '~/composables/useStream'
+import { proxiedUrl, type StreamOption, type StreamResolveResponse } from '~/composables/useStream'
 const route = useRoute()
 const id = computed(() => Number(route.params.id))
 
@@ -65,11 +65,19 @@ const year = computed(() =>
 
 const { public: { apiBase } } = useRuntimeConfig()
 const pickerOpen = ref(false)
-const pickerLoading = ref(false)
-const pickerError = ref<string | null>(null)
-const qualities = ref<StreamOption[]>([])
+const playPickerOpen = ref(false)
+const streamQualities = ref<StreamOption[]>([])
+const downloadQualities = ref<StreamOption[]>([])
+const playReferer = ref<string | undefined>(undefined)
+const availability = ref<'loading' | 'ok' | 'none' | 'error'>('loading')
 const downloadButton = ref<HTMLButtonElement | null>(null)
 const pickerEl = ref<HTMLDivElement | null>(null)
+const playButton = ref<HTMLButtonElement | null>(null)
+const playPickerEl = ref<HTMLDivElement | null>(null)
+const router = useRouter()
+
+const hasStreams = computed(() => streamQualities.value.length > 0)
+const hasDownloads = computed(() => downloadQualities.value.length > 0)
 
 const formatBytes = (n: number) => {
   if (n >= 1e9) return `${(n / 1e9).toFixed(2)} GB`
@@ -77,10 +85,9 @@ const formatBytes = (n: number) => {
   return `${(n / 1e3).toFixed(0)} KB`
 }
 
-const fetchQualities = async () => {
+const fetchAvailability = async () => {
   if (!movie.value) return
-  pickerLoading.value = true
-  pickerError.value = null
+  availability.value = 'loading'
   try {
     const params = new URLSearchParams({
       tmdb_id: String(movie.value.id),
@@ -90,33 +97,51 @@ const fetchQualities = async () => {
     const res = await $fetch<StreamResolveResponse>(
       `${apiBase}/api/stream/movie?${params.toString()}`,
     )
-    if (!res?.qualities?.length) throw new Error('no qualities')
-    qualities.value = res.qualities
+    streamQualities.value = res.qualities ?? []
+    downloadQualities.value = res.download_qualities ?? []
+    playReferer.value = res.play_referer
+    availability.value = hasStreams.value || hasDownloads.value ? 'ok' : 'none'
   } catch (e: any) {
     const status = e?.response?.status ?? e?.statusCode
-    pickerError.value =
-      status === 404 ? 'Not available from source.' : 'Download failed.'
-  } finally {
-    pickerLoading.value = false
+    streamQualities.value = []
+    downloadQualities.value = []
+    // 404 is "MovieBox has nothing for this title" — coming soon.
+    availability.value = status === 404 ? 'none' : 'error'
   }
 }
 
-const togglePicker = async () => {
-  if (pickerOpen.value) {
-    pickerOpen.value = false
-    return
-  }
-  pickerOpen.value = true
-  if (!qualities.value.length && !pickerError.value) {
-    await fetchQualities()
-  }
+// Auto-fetch as soon as we know the movie title.
+watch(
+  () => movie.value?.id,
+  (id) => {
+    if (id) fetchAvailability()
+  },
+  { immediate: true },
+)
+
+const togglePicker = () => {
+  if (!hasDownloads.value) return
+  pickerOpen.value = !pickerOpen.value
+  if (pickerOpen.value) playPickerOpen.value = false
+}
+
+const togglePlayPicker = () => {
+  if (!hasStreams.value) return
+  playPickerOpen.value = !playPickerOpen.value
+  if (playPickerOpen.value) pickerOpen.value = false
+}
+
+const playOption = (opt: StreamOption) => {
+  if (!movie.value) return
+  playPickerOpen.value = false
+  router.push(`/watch/movie/${movie.value.id}?q=${encodeURIComponent(opt.resolution)}`)
 }
 
 const downloadOption = (opt: StreamOption) => {
   if (!movie.value) return
   const safe = movie.value.title.replace(/[\\/:*?"<>|]+/g, ' ').trim()
   const a = document.createElement('a')
-  a.href = opt.url
+  a.href = proxiedUrl(opt.url, playReferer.value)
   a.download = `${safe}.mp4`
   a.target = '_blank'
   a.rel = 'noopener'
@@ -127,13 +152,19 @@ const downloadOption = (opt: StreamOption) => {
 }
 
 const onDocClick = (e: MouseEvent) => {
-  if (!pickerOpen.value) return
   const t = e.target as Node
-  if (pickerEl.value?.contains(t) || downloadButton.value?.contains(t)) return
-  pickerOpen.value = false
+  if (pickerOpen.value && !pickerEl.value?.contains(t) && !downloadButton.value?.contains(t)) {
+    pickerOpen.value = false
+  }
+  if (playPickerOpen.value && !playPickerEl.value?.contains(t) && !playButton.value?.contains(t)) {
+    playPickerOpen.value = false
+  }
 }
 const onKey = (e: KeyboardEvent) => {
-  if (e.key === 'Escape') pickerOpen.value = false
+  if (e.key === 'Escape') {
+    pickerOpen.value = false
+    playPickerOpen.value = false
+  }
 }
 
 onMounted(() => {
@@ -184,8 +215,55 @@ onBeforeUnmount(() => {
             <p class="text-slate-300 max-w-3xl">{{ movie.overview }}</p>
             <div v-if="director" class="text-sm text-slate-400">Directed by <span class="text-slate-200">{{ director }}</span></div>
             <div class="flex flex-wrap gap-3 pt-2">
-              <NuxtLink :to="`/watch/movie/${movie.id}`" class="btn-primary">▶ Play</NuxtLink>
-              <div class="relative">
+              <div
+                v-if="availability === 'loading'"
+                class="chip text-slate-400"
+              >
+                Checking availability…
+              </div>
+              <div
+                v-else-if="availability === 'none'"
+                class="chip text-amber-200 bg-amber-500/10 ring-1 ring-amber-400/30"
+              >
+                Coming Soon
+              </div>
+              <div
+                v-else-if="availability === 'error'"
+                class="chip text-red-300 bg-red-500/10 ring-1 ring-red-400/30"
+              >
+                Source unavailable
+              </div>
+              <div v-if="hasStreams" class="relative">
+                <button
+                  ref="playButton"
+                  class="btn-primary"
+                  :aria-expanded="playPickerOpen"
+                  aria-haspopup="menu"
+                  @click="togglePlayPicker"
+                >
+                  ▶ Play
+                </button>
+                <div
+                  v-if="playPickerOpen"
+                  ref="playPickerEl"
+                  role="menu"
+                  class="absolute z-20 mt-2 left-0 min-w-[14rem] bg-ink-900
+                         ring-1 ring-white/10 rounded-lg shadow-xl p-1"
+                >
+                  <button
+                    v-for="q in streamQualities"
+                    :key="q.url"
+                    role="menuitem"
+                    class="w-full flex items-center justify-between gap-4 px-3 py-2
+                           rounded-md text-sm hover:bg-white/5"
+                    @click="playOption(q)"
+                  >
+                    <span class="font-medium">{{ q.resolution }}</span>
+                    <span class="text-slate-400">{{ formatBytes(q.size_bytes) }}</span>
+                  </button>
+                </div>
+              </div>
+              <div v-if="hasDownloads" class="relative">
                 <button
                   ref="downloadButton"
                   class="btn-ghost"
@@ -202,21 +280,8 @@ onBeforeUnmount(() => {
                   class="absolute z-20 mt-2 right-0 min-w-[14rem] bg-ink-900
                          ring-1 ring-white/10 rounded-lg shadow-xl p-1"
                 >
-                  <div
-                    v-if="pickerLoading"
-                    class="px-3 py-2 text-sm text-slate-400"
-                  >
-                    Loading qualities…
-                  </div>
-                  <div
-                    v-else-if="pickerError"
-                    class="px-3 py-2 text-sm text-red-400"
-                  >
-                    {{ pickerError }}
-                  </div>
                   <button
-                    v-for="q in qualities"
-                    v-else
+                    v-for="q in downloadQualities"
                     :key="q.url"
                     role="menuitem"
                     class="w-full flex items-center justify-between gap-4 px-3 py-2

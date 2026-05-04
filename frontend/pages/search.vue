@@ -25,14 +25,27 @@ const filterOptions = [
   { key: 'tv', label: 'Series' },
 ]
 
-const { data, pending } = await useTmdb<{ results: SearchItem[] }>(
-  () =>
+// Roll query into the URL so useFetch refetches when q/filter change.
+// (useFetch reliably watches the URL getter; the separate `query` option
+// does not always re-trigger on reactive changes.)
+const searchPath = computed(() => {
+  const sub =
     filter.value === 'all'
       ? 'search/multi'
       : filter.value === 'movie'
         ? 'search/movie'
-        : 'search/tv',
-  () => ({ query: q.value, page: 1, include_adult: 'false' }),
+        : 'search/tv'
+  const qs = new URLSearchParams({
+    query: q.value,
+    page: '1',
+    include_adult: 'false',
+  }).toString()
+  return `${sub}?${qs}`
+})
+
+const { data, pending } = await useTmdb<{ results: SearchItem[] }>(
+  searchPath,
+  {},
   { lazy: true },
 )
 

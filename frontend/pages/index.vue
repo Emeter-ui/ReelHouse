@@ -34,8 +34,8 @@ const cw = useContinueWatching()
 </script>
 
 <template>
-  <div>
-    <Hero :items="heroItems" />
+  <div class="pb-20">
+    <Hero :items="heroItems" class="mb-8" />
 
     <MovieRow
       v-if="cw.items.value.length"

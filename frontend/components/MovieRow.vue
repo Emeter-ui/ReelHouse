@@ -45,18 +45,18 @@ const yearOf = (item: TmdbItem) => {
 </script>
 
 <template>
-  <section class="px-6 my-8 max-w-7xl mx-auto">
-    <div class="flex items-center justify-between mb-3 gap-4 flex-wrap">
-      <h2 class="text-lg font-semibold tracking-tight">{{ title }}</h2>
-      <div v-if="tabs" class="flex gap-2">
+  <section class="my-10 max-w-7xl mx-auto">
+    <div class="px-6 flex items-center justify-between mb-4 gap-4 flex-wrap">
+      <h2 class="text-xl font-bold tracking-tight text-white/90">{{ title }}</h2>
+      <div v-if="tabs" class="flex gap-2 bg-white/5 p-1 rounded-full backdrop-blur-sm">
         <button
           v-for="t in tabs"
           :key="t.key"
-          class="text-xs px-3 py-1 rounded-full transition-colors"
+          class="text-[10px] font-bold uppercase tracking-wider px-4 py-1.5 rounded-full transition-all duration-300"
           :class="
             t.key === active
-              ? 'bg-white/15 text-white'
-              : 'bg-white/5 text-slate-400 hover:bg-white/10'
+              ? 'bg-white text-ink-950 shadow-md'
+              : 'text-slate-400 hover:text-white hover:bg-white/5'
           "
           @click="active = t.key"
         >
@@ -65,29 +65,44 @@ const yearOf = (item: TmdbItem) => {
       </div>
     </div>
 
-    <div v-if="pending && !list.length" class="row-scroll">
-      <div
-        v-for="i in 8"
-        :key="i"
-        class="w-40 sm:w-48 aspect-[2/3] rounded-lg bg-white/5 animate-pulse shrink-0"
-      />
-    </div>
+    <div class="relative group">
+      <div v-if="pending && !list.length" class="row-scroll px-6">
+        <div
+          v-for="i in 8"
+          :key="i"
+          class="w-36 sm:w-48 md:w-52 aspect-[2/3] rounded-xl bg-white/5 animate-pulse shrink-0"
+        />
+      </div>
 
-    <div v-else-if="!list.length" class="text-sm text-slate-500 py-6">
-      Nothing to show yet.
-    </div>
+      <div v-else-if="!list.length" class="px-6 text-sm text-slate-500 py-10 text-center glass-panel rounded-2xl mx-6">
+        No titles found in this category.
+      </div>
 
-    <div v-else class="row-scroll">
-      <MovieCard
-        v-for="item in list"
-        :key="item.id"
-        :id="item.id"
-        :type="inferredType"
-        :title="item.title || item.name || 'Untitled'"
-        :poster="item.poster_path"
-        :year="yearOf(item)"
-        :rating="item.vote_average ?? null"
-      />
+      <div v-else class="row-scroll px-6 mask-fade">
+        <MovieCard
+          v-for="item in list"
+          :key="item.id"
+          :id="item.id"
+          :type="inferredType"
+          :title="item.title || item.name || 'Untitled'"
+          :poster="item.poster_path"
+          :year="yearOf(item)"
+          :rating="item.vote_average ?? null"
+        />
+        <!-- Spacer for scroll end padding -->
+        <div class="w-1 shrink-0" />
+      </div>
     </div>
   </section>
 </template>
+
+<style scoped>
+.mask-fade {
+  mask-image: linear-gradient(to right, transparent, black 40px, black calc(100% - 40px), transparent);
+}
+@media (max-width: 640px) {
+  .mask-fade {
+    mask-image: none;
+  }
+}
+</style>

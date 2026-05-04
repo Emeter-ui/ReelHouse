@@ -27,6 +27,11 @@ const { data: resolved, pending, error } = useMovieStream(
   () => movie.value?.title ?? '',
   () => year.value,
 )
+
+const preferredResolution = computed(() => {
+  const q = route.query.q
+  return typeof q === 'string' && q ? q : undefined
+})
 </script>
 
 <template>
@@ -46,6 +51,7 @@ const { data: resolved, pending, error } = useMovieStream(
         content-type="movie"
         :content-title="movie.title"
         :content-poster="movie.poster_path"
+        :preferred-resolution="preferredResolution"
       />
       <div v-if="movie?.overview" class="px-2 py-4 text-sm text-slate-300 max-w-3xl">
         {{ movie.overview }}

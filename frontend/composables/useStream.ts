@@ -4,11 +4,21 @@ export interface StreamOption {
   resolution: string
   size_bytes: number
   url: string
+  codec?: string
+  format?: string
 }
 
 export interface StreamResolveResponse {
-  stream_url: string
+  /** May be null when only downloads are available. */
+  stream_url: string | null
+  stream_codec?: string
+  stream_format?: string
+  /** Referer the proxy should send when fetching this URL (CDN allowlists it). */
+  play_referer?: string
+  /** Streams playable in `<video>`. Empty if only downloads exist. */
   qualities: StreamOption[]
+  /** Files from MovieBox's mobile resource endpoint. Same shape as qualities. */
+  download_qualities: StreamOption[]
   captions: Array<{ lang: string; url: string }>
   source: string
 }
@@ -67,11 +77,13 @@ export function useSeriesStream(
 
 /**
  * Build a backend byte-proxy URL. Used as the fallback `<source>` when a
- * direct CDN URL fails the CORS / Referer probe.
+ * direct CDN URL fails the CORS / Referer probe. Pass `referer` so the
+ * proxy can send the Referer the upstream CDN expects.
  */
-export function proxiedUrl(rawUrl: string) {
+export function proxiedUrl(rawUrl: string, referer?: string) {
   const { public: { apiBase } } = useRuntimeConfig()
-  return `${apiBase}/api/proxy?url=${encodeURIComponent(rawUrl)}`
+  const base = `${apiBase}/api/proxy?url=${encodeURIComponent(rawUrl)}`
+  return referer ? `${base}&referer=${encodeURIComponent(referer)}` : base
 }
 
 /**

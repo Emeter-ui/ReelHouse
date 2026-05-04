@@ -30,16 +30,22 @@ export default <Partial<Config>>{
         },
       },
       fontFamily: {
-        sans: ['ui-sans-serif', 'system-ui', 'sans-serif'],
+        sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
       },
       backgroundImage: {
         'hero-fade': 'linear-gradient(to top, #020617 5%, rgba(2,6,23,0.6) 40%, rgba(2,6,23,0) 100%)',
         'card-fade': 'linear-gradient(to top, rgba(2,6,23,0.95) 0%, rgba(2,6,23,0) 70%)',
         'brand-gradient': 'linear-gradient(135deg, #3b82f6 0%, #a855f7 50%, #ec4899 100%)',
+        'glass-gradient': 'linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%)',
       },
       boxShadow: {
         glow: '0 0 0 1px rgba(96,165,250,0.5), 0 8px 30px rgba(59,130,246,0.25)',
+        'glass': '0 8px 32px 0 rgba(0, 0, 0, 0.37)',
       },
+      transitionProperty: {
+        'height': 'height',
+        'spacing': 'margin, padding',
+      }
     },
   },
   plugins: [],

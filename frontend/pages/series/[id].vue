@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useTmdb, tmdbImg } from '~/composables/useTmdb'
 import { useMyList } from '~/composables/useMyList'
-import type { StreamOption, StreamResolveResponse } from '~/composables/useStream'
+import { proxiedUrl, type StreamOption, type StreamResolveResponse } from '~/composables/useStream'
 const route = useRoute()
 const id = computed(() => Number(route.params.id))
 
@@ -49,14 +49,31 @@ const seasons = computed<SeasonStub[]>(() =>
   (series.value?.seasons ?? []).filter((s) => s.season_number > 0),
 )
 
-const activeSeason = ref<number | null>(null)
-const activeEpisode = ref<number>(1)
+// Persist season/episode in the URL so back-navigation from /watch
+// restores what the user was browsing.
+const initialSeason = (() => {
+  const v = Number(route.query.s)
+  return Number.isFinite(v) && v > 0 ? v : null
+})()
+const initialEpisode = (() => {
+  const v = Number(route.query.e)
+  return Number.isFinite(v) && v > 0 ? v : 1
+})()
+
+const activeSeason = ref<number | null>(initialSeason)
+const activeEpisode = ref<number>(initialEpisode)
+
 watch(seasons, (s) => {
   if (s.length && activeSeason.value === null) activeSeason.value = s[0].season_number
 })
-watch(activeSeason, () => {
+
+// User-driven season change resets episode; programmatic changes (URL restore,
+// auto-default) leave episode alone.
+const onSeasonPicked = (n: number) => {
+  if (n === activeSeason.value) return
+  activeSeason.value = n
   activeEpisode.value = 1
-})
+}
 
 const { data: seasonData, pending: seasonPending } = await useTmdb<{ episodes: Episode[] }>(
   () => `tv/${id.value}/season/${activeSeason.value ?? 1}`,
@@ -79,11 +96,29 @@ const year = computed(() =>
 
 const { public: { apiBase } } = useRuntimeConfig()
 const pickerOpen = ref(false)
-const pickerLoading = ref(false)
-const pickerError = ref<string | null>(null)
-const qualities = ref<StreamOption[]>([])
+const playPickerOpen = ref(false)
+const streamQualities = ref<StreamOption[]>([])
+const downloadQualities = ref<StreamOption[]>([])
+const playReferer = ref<string | undefined>(undefined)
+const availability = ref<'idle' | 'loading' | 'ok' | 'none' | 'error'>('idle')
 const downloadButton = ref<HTMLButtonElement | null>(null)
 const pickerEl = ref<HTMLDivElement | null>(null)
+const playButton = ref<HTMLButtonElement | null>(null)
+const playPickerEl = ref<HTMLDivElement | null>(null)
+const router = useRouter()
+
+const hasStreams = computed(() => streamQualities.value.length > 0)
+const hasDownloads = computed(() => downloadQualities.value.length > 0)
+
+// Mirror season/episode into the URL (replace, don't push, so we don't
+// pollute history). Skips when values match — avoids extra navigations.
+watch([activeSeason, activeEpisode], ([s, e]) => {
+  if (s === null) return
+  const sStr = String(s)
+  const eStr = String(e)
+  if (route.query.s === sStr && route.query.e === eStr) return
+  router.replace({ path: route.path, query: { ...route.query, s: sStr, e: eStr } })
+})
 
 const formatBytes = (n: number) => {
   if (n >= 1e9) return `${(n / 1e9).toFixed(2)} GB`
@@ -91,53 +126,74 @@ const formatBytes = (n: number) => {
   return `${(n / 1e3).toFixed(0)} KB`
 }
 
-const fetchQualities = async () => {
+let availabilityToken = 0
+const fetchAvailability = async () => {
   if (!series.value || activeSeason.value === null || activeEpisode.value === null) return
-  pickerLoading.value = true
-  pickerError.value = null
+  availability.value = 'loading'
+  const token = ++availabilityToken
   try {
     const params = new URLSearchParams({
       tmdb_id: String(series.value.id),
       title: series.value.name,
       season: String(activeSeason.value),
-      episode: String(activeEpisode.value)
+      episode: String(activeEpisode.value),
     })
     if (year.value) params.set('year', year.value)
     const res = await $fetch<StreamResolveResponse>(
       `${apiBase}/api/stream/series?${params.toString()}`,
     )
-    if (!res?.qualities?.length) throw new Error('no qualities')
-    qualities.value = res.qualities
+    // Drop late responses for stale episodes
+    if (token !== availabilityToken) return
+    streamQualities.value = res.qualities ?? []
+    downloadQualities.value = res.download_qualities ?? []
+    playReferer.value = res.play_referer
+    availability.value = hasStreams.value || hasDownloads.value ? 'ok' : 'none'
   } catch (e: any) {
+    if (token !== availabilityToken) return
     const status = e?.response?.status ?? e?.statusCode
-    pickerError.value =
-      status === 404 ? 'Not available from source.' : 'Download failed.'
-  } finally {
-    pickerLoading.value = false
+    streamQualities.value = []
+    downloadQualities.value = []
+    availability.value = status === 404 ? 'none' : 'error'
   }
 }
 
-watch([activeSeason, activeEpisode], () => {
-  pickerOpen.value = false
-  qualities.value = []
-})
-
-const togglePicker = async () => {
-  if (pickerOpen.value) {
+// Refetch when the user picks a different season/episode (or on first load).
+watch(
+  [() => series.value?.id, activeSeason, activeEpisode],
+  ([id, s, e]) => {
     pickerOpen.value = false
-    return
-  }
-  pickerOpen.value = true
-  if (!qualities.value.length && !pickerError.value) {
-    await fetchQualities()
-  }
+    playPickerOpen.value = false
+    if (id && s !== null && e !== null) fetchAvailability()
+  },
+  { immediate: true },
+)
+
+const togglePicker = () => {
+  if (!hasDownloads.value) return
+  pickerOpen.value = !pickerOpen.value
+  if (pickerOpen.value) playPickerOpen.value = false
+}
+
+const togglePlayPicker = () => {
+  if (!hasStreams.value) return
+  playPickerOpen.value = !playPickerOpen.value
+  if (playPickerOpen.value) pickerOpen.value = false
+}
+
+const playOption = (opt: StreamOption) => {
+  if (!series.value || activeSeason.value === null) return
+  playPickerOpen.value = false
+  router.push(
+    `/watch/series/${series.value.id}/s/${activeSeason.value}/e/${activeEpisode.value}` +
+      `?q=${encodeURIComponent(opt.resolution)}`,
+  )
 }
 
 const downloadOption = (opt: StreamOption) => {
   if (!series.value) return
   const safe = `${series.value.name} S${activeSeason.value}E${activeEpisode.value}`.replace(/[\\/:*?"<>|]+/g, ' ').trim()
   const a = document.createElement('a')
-  a.href = opt.url
+  a.href = proxiedUrl(opt.url, playReferer.value)
   a.download = `${safe}.mp4`
   a.target = '_blank'
   a.rel = 'noopener'
@@ -148,13 +204,19 @@ const downloadOption = (opt: StreamOption) => {
 }
 
 const onDocClick = (e: MouseEvent) => {
-  if (!pickerOpen.value) return
   const t = e.target as Node
-  if (pickerEl.value?.contains(t) || downloadButton.value?.contains(t)) return
-  pickerOpen.value = false
+  if (pickerOpen.value && !pickerEl.value?.contains(t) && !downloadButton.value?.contains(t)) {
+    pickerOpen.value = false
+  }
+  if (playPickerOpen.value && !playPickerEl.value?.contains(t) && !playButton.value?.contains(t)) {
+    playPickerOpen.value = false
+  }
 }
 const onKey = (e: KeyboardEvent) => {
-  if (e.key === 'Escape') pickerOpen.value = false
+  if (e.key === 'Escape') {
+    pickerOpen.value = false
+    playPickerOpen.value = false
+  }
 }
 
 onMounted(() => {
@@ -204,8 +266,9 @@ onBeforeUnmount(() => {
             <div class="flex flex-wrap items-center gap-3 pt-2">
               <select
                 v-if="seasons.length"
-                v-model.number="activeSeason"
+                :value="activeSeason"
                 class="rounded-md bg-ink-900 border border-white/10 px-3 py-2 text-sm h-[42px]"
+                @change="onSeasonPicked(Number(($event.target as HTMLSelectElement).value))"
               >
                 <option v-for="s in seasons" :key="s.id" :value="s.season_number">
                   {{ s.name }} ({{ s.episode_count }} ep)
@@ -220,8 +283,55 @@ onBeforeUnmount(() => {
                   E{{ e.episode_number }} — {{ e.name }}
                 </option>
               </select>
-              <NuxtLink :to="`/watch/series/${series.id}/s/${activeSeason ?? 1}/e/${activeEpisode}`" class="btn-primary shrink-0">▶ Play</NuxtLink>
-              <div class="relative shrink-0">
+              <div
+                v-if="availability === 'loading'"
+                class="chip text-slate-400 shrink-0"
+              >
+                Checking…
+              </div>
+              <div
+                v-else-if="availability === 'none'"
+                class="chip text-amber-200 bg-amber-500/10 ring-1 ring-amber-400/30 shrink-0"
+              >
+                Coming Soon
+              </div>
+              <div
+                v-else-if="availability === 'error'"
+                class="chip text-red-300 bg-red-500/10 ring-1 ring-red-400/30 shrink-0"
+              >
+                Source unavailable
+              </div>
+              <div v-if="hasStreams" class="relative shrink-0">
+                <button
+                  ref="playButton"
+                  class="btn-primary"
+                  :aria-expanded="playPickerOpen"
+                  aria-haspopup="menu"
+                  @click="togglePlayPicker"
+                >
+                  ▶ Play
+                </button>
+                <div
+                  v-if="playPickerOpen"
+                  ref="playPickerEl"
+                  role="menu"
+                  class="absolute z-20 mt-2 left-0 min-w-[14rem] bg-ink-900
+                         ring-1 ring-white/10 rounded-lg shadow-xl p-1"
+                >
+                  <button
+                    v-for="q in streamQualities"
+                    :key="q.url"
+                    role="menuitem"
+                    class="w-full flex items-center justify-between gap-4 px-3 py-2
+                           rounded-md text-sm hover:bg-white/5"
+                    @click="playOption(q)"
+                  >
+                    <span class="font-medium">{{ q.resolution }}</span>
+                    <span class="text-slate-400">{{ formatBytes(q.size_bytes) }}</span>
+                  </button>
+                </div>
+              </div>
+              <div v-if="hasDownloads" class="relative shrink-0">
                 <button
                   ref="downloadButton"
                   class="btn-ghost"
@@ -238,21 +348,8 @@ onBeforeUnmount(() => {
                   class="absolute z-20 mt-2 right-0 min-w-[14rem] bg-ink-900
                          ring-1 ring-white/10 rounded-lg shadow-xl p-1"
                 >
-                  <div
-                    v-if="pickerLoading"
-                    class="px-3 py-2 text-sm text-slate-400"
-                  >
-                    Loading qualities…
-                  </div>
-                  <div
-                    v-else-if="pickerError"
-                    class="px-3 py-2 text-sm text-red-400"
-                  >
-                    {{ pickerError }}
-                  </div>
                   <button
-                    v-for="q in qualities"
-                    v-else
+                    v-for="q in downloadQualities"
                     :key="q.url"
                     role="menuitem"
                     class="w-full flex items-center justify-between gap-4 px-3 py-2

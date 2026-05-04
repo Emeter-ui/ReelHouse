@@ -45,6 +45,11 @@ const { data: resolved, pending, error } = useSeriesStream(
   episode,
 )
 
+const preferredResolution = computed(() => {
+  const q = route.query.q
+  return typeof q === 'string' && q ? q : undefined
+})
+
 const next = computed<Episode | undefined>(() => {
   if (!seasonData.value || !ep.value) return undefined
   return seasonData.value.episodes.find((e) => e.episode_number === episode.value + 1)
@@ -73,6 +78,7 @@ const next = computed<Episode | undefined>(() => {
         :content-poster="series.poster_path"
         :season="season"
         :episode="episode"
+        :preferred-resolution="preferredResolution"
       />
 
       <div class="px-2 py-4 max-w-3xl space-y-3">

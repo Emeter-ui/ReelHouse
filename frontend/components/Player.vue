@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { canFetchDirect, proxiedUrl, type StreamResolveResponse } from '~/composables/useStream'
 import { useContinueWatching } from '~/composables/useContinueWatching'
+import type Plyr from 'plyr'
 
 type Props = {
   resolved: StreamResolveResponse | null
@@ -13,16 +14,40 @@ type Props = {
   contentPoster: string | null
   season?: number
   episode?: number
+  /** Resolution string like "1080p" — picks the matching entry in resolved.qualities. */
+  preferredResolution?: string
 }
 const props = defineProps<Props>()
+
+// Pick the active stream from qualities[] when a preferredResolution is set;
+// otherwise fall back to the server-chosen stream_url.
+const activeQuality = computed(() => {
+  const list = props.resolved?.qualities ?? []
+  const wanted = props.preferredResolution
+  if (wanted) {
+    const hit = list.find((q) => q.resolution === wanted)
+    if (hit) return hit
+  }
+  return null
+})
+const activeStreamUrl = computed(
+  () => activeQuality.value?.url ?? props.resolved?.stream_url ?? null,
+)
+const activeCodec = computed(
+  () => activeQuality.value?.codec ?? props.resolved?.stream_codec ?? '',
+)
 
 const cw = useContinueWatching()
 const finalSrc = ref<string | null>(null)
 const probeStatus = ref<'idle' | 'probing' | 'direct' | 'proxied' | 'failed'>('idle')
 const videoError = ref<string | null>(null)
 
+const videoElement = ref<HTMLVideoElement | null>(null)
+let player: Plyr | null = null
+let hlsInstance: any = null
+
 const onVideoError = (e: any) => {
-  const err = e.target?.error
+  const err = player?.media?.error || e.detail?.error
   const codeMap: Record<number, string> = {
     1: 'aborted',
     2: 'network error',
@@ -34,24 +59,22 @@ const onVideoError = (e: any) => {
 }
 
 watch(
-  () => props.resolved?.stream_url,
+  activeStreamUrl,
   async (url) => {
-    console.log('[player] resolved.stream_url =', url)
+    console.log('[player] active stream_url =', url)
     if (!url) {
       finalSrc.value = null
       return
     }
     probeStatus.value = 'probing'
     const direct = await canFetchDirect(url)
-    console.log('[player] canFetchDirect =', direct)
     if (direct) {
       finalSrc.value = url
       probeStatus.value = 'direct'
     } else {
-      finalSrc.value = proxiedUrl(url)
+      finalSrc.value = proxiedUrl(url, props.resolved?.play_referer)
       probeStatus.value = 'proxied'
     }
-    console.log('[player] finalSrc =', finalSrc.value, 'probeStatus =', probeStatus.value)
   },
   { immediate: true },
 )
@@ -61,15 +84,13 @@ const previous = computed(() =>
   cw.find(props.contentId, props.contentType, props.season, props.episode),
 )
 
-const onLoadedMetadata = (e: any) => {
-  const player = e.target
+const onLoadedMetadata = () => {
   if (player && previous.value) {
     player.currentTime = previous.value.position
   }
 }
 
-const onTimeUpdate = (e: any) => {
-  const player = e.target
+const onTimeUpdate = () => {
   if (!player || !player.duration || isNaN(player.duration)) return
   cw.upsert({
     id: props.contentId,
@@ -83,16 +104,90 @@ const onTimeUpdate = (e: any) => {
   })
 }
 
-// Safari needs an explicit hvc1 codec hint to engage its HEVC decoder; without
-// it, plain video/mp4 makes Safari assume H.264 and reject HEVC files outright.
 const sourceType = computed(() => {
-  const u = (props.resolved?.stream_url ?? '').toLowerCase()
-  return u.includes('/h265/') || u.includes('/hevc/')
-    ? 'video/mp4; codecs="hvc1"'
-    : 'video/mp4'
+  const u = (activeStreamUrl.value ?? '').toLowerCase()
+  if (u.includes('.m3u8')) return 'application/x-mpegURL'
+  // Trust the codec from the play endpoint response; fall back to URL hints
+  // only when the field is missing.
+  const codec = activeCodec.value.toLowerCase()
+  const isHevc = codec
+    ? codec.includes('hevc') || codec.includes('265')
+    : u.includes('/h265/') || u.includes('/hevc/')
+  return isHevc ? 'video/mp4; codecs="hvc1"' : 'video/mp4'
 })
 
-onBeforeUnmount(() => cw.flush())
+onMounted(async () => {
+  const PlyrLib = (await import('plyr')).default
+  if (videoElement.value) {
+    player = new PlyrLib(videoElement.value, {
+      autoplay: true,
+      controls: [
+        'play-large', 'play', 'progress', 'current-time', 'duration',
+        'mute', 'volume', 'captions', 'settings', 'pip', 'airplay', 'fullscreen'
+      ],
+      settings: ['quality', 'speed', 'loop'],
+    })
+
+    player.on('ready', onLoadedMetadata)
+    player.on('timeupdate', onTimeUpdate)
+    player.on('error', onVideoError)
+    
+    // Initial source setup
+    updatePlayerSource()
+  }
+})
+
+const updatePlayerSource = async () => {
+  if (!player || !finalSrc.value) return
+  
+  const isHls = finalSrc.value.toLowerCase().includes('.m3u8')
+  
+  // Cleanup previous HLS instance if any
+  if (hlsInstance) {
+    hlsInstance.destroy()
+    hlsInstance = null
+  }
+
+  if (isHls) {
+    const Hls = (await import('hls.js')).default
+    if (Hls.isSupported()) {
+      hlsInstance = new Hls()
+      hlsInstance.loadSource(finalSrc.value)
+      hlsInstance.attachMedia(videoElement.value!)
+      hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
+        if (player?.config.autoplay) player.play()
+      })
+    } else if (videoElement.value!.canPlayType('application/vnd.apple.mpegurl')) {
+      // Native HLS (Safari/iOS)
+      videoElement.value!.src = finalSrc.value
+    }
+  }
+
+  player.source = {
+    type: 'video',
+    title: props.contentTitle,
+    sources: [
+      {
+        src: finalSrc.value,
+        type: sourceType.value,
+      },
+    ],
+    tracks: (props.resolved?.captions || []).map(c => ({
+      kind: 'subtitles',
+      label: c.lang,
+      srclang: c.lang.slice(0, 2).toLowerCase(),
+      src: proxiedUrl(c.url, props.resolved?.play_referer),
+    }))
+  }
+}
+
+watch([finalSrc, sourceType], updatePlayerSource)
+
+onBeforeUnmount(() => {
+  if (hlsInstance) hlsInstance.destroy()
+  if (player) player.destroy()
+  cw.flush()
+})
 
 const downloadFilename = computed(() => {
   const safe = (props.contentTitle || 'video').replace(/[\\/:*?"<>|]+/g, ' ').trim()
@@ -107,16 +202,18 @@ const downloadFilename = computed(() => {
 
 <template>
   <div class="relative w-full aspect-video bg-black rounded-lg overflow-hidden group">
-    <div v-if="pending" class="absolute inset-0 flex items-center justify-center text-slate-400">
+    <!-- Overlay: Loading -->
+    <div v-if="pending" class="absolute inset-0 flex items-center justify-center text-slate-400 z-20 pointer-events-none">
       <div class="flex flex-col items-center gap-3">
         <div class="w-8 h-8 border-2 border-accent-gold/30 border-t-accent-gold rounded-full animate-spin" />
         <span class="text-sm font-medium tracking-wide">Resolving stream…</span>
       </div>
     </div>
     
+    <!-- Overlay: Error -->
     <div
       v-else-if="error || !resolved"
-      class="absolute inset-0 flex items-center justify-center px-6 text-center text-slate-300"
+      class="absolute inset-0 flex items-center justify-center px-6 text-center text-slate-300 z-20"
     >
       <div class="max-w-xs space-y-2">
         <p class="font-medium text-red-400">Source unavailable</p>
@@ -124,37 +221,28 @@ const downloadFilename = computed(() => {
       </div>
     </div>
 
-    <video
-      v-else-if="finalSrc"
-      controls
-      autoplay
-      playsinline
-      class="w-full h-full bg-black"
-      @loadedmetadata="onLoadedMetadata"
-      @timeupdate="onTimeUpdate"
-      @error="onVideoError"
-    >
-      <source :src="finalSrc" :type="sourceType" />
-      <track
-        v-for="c in resolved.captions"
-        :key="c.url"
-        kind="subtitles"
-        :label="c.lang"
-        :srclang="c.lang.slice(0, 2).toLowerCase()"
-        :src="proxiedUrl(c.url)"
-      />
-    </video>
+    <!-- The Player -->
+    <div v-show="finalSrc" class="w-full h-full">
+      <video
+        ref="videoElement"
+        playsinline
+        class="w-full h-full"
+      ></video>
+    </div>
 
-    <div
-      v-if="probeStatus === 'proxied'"
-      class="absolute top-4 left-4 chip bg-black/60 text-amber-200 backdrop-blur-md border border-white/5 z-10"
-    >
-      via proxy
+    <!-- UI Overlays (Chips) -->
+    <div class="absolute top-4 left-4 flex gap-2 z-10 pointer-events-none">
+      <div
+        v-if="probeStatus === 'proxied'"
+        class="chip bg-black/60 text-amber-200 backdrop-blur-md border border-white/5"
+      >
+        via proxy
+      </div>
     </div>
     
     <a
-      v-if="resolved?.stream_url"
-      :href="resolved.stream_url"
+      v-if="activeStreamUrl"
+      :href="proxiedUrl(activeStreamUrl, resolved?.play_referer)"
       :download="downloadFilename"
       target="_blank"
       rel="noopener"
@@ -167,9 +255,35 @@ const downloadFilename = computed(() => {
     
     <div
       v-if="videoError"
-      class="absolute bottom-20 left-1/2 -translate-x-1/2 chip bg-red-900/90 text-red-100 border border-red-500/50 z-20"
+      class="absolute bottom-20 left-1/2 -translate-x-1/2 chip bg-red-900/90 text-red-100 border border-red-500/50 z-30"
     >
       Playback error: {{ videoError }}
     </div>
   </div>
 </template>
+
+<style>
+/* Custom Plyr adjustments to match theme */
+:root {
+  --plyr-color-main: #eab308; /* accent-gold */
+  --plyr-video-background: #000;
+  --plyr-menu-background: rgba(15, 23, 42, 0.95);
+  --plyr-menu-color: #f8fafc;
+}
+
+.plyr--full-ui input[type=range] {
+  color: var(--plyr-color-main);
+}
+
+.plyr__control--overlaid {
+  background: rgba(234, 179, 8, 0.8);
+}
+
+.plyr--video .plyr__control.plyr__tab-focus, 
+.plyr--video .plyr__control:hover, 
+.plyr--video .plyr__control[aria-expanded=true] {
+  background: var(--plyr-color-main);
+  color: #000;
+}
+</style>
+

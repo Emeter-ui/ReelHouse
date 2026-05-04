@@ -11,7 +11,7 @@ export default defineNuxtConfig({
     dirs: ['composables']
   },
 
-  css: ['~/assets/css/main.css'],
+  css: ['~/assets/css/main.css', 'plyr/dist/plyr.css'],
 
   app: {
     head: {
@@ -29,7 +29,7 @@ export default defineNuxtConfig({
 
   runtimeConfig: {
     public: {
-      apiBase: 'http://localhost:8001', // overridden by NUXT_PUBLIC_API_BASE in .env
+      apiBase: 'http://localhost:8003', // overridden by NUXT_PUBLIC_API_BASE in .env
       tmdbImageBase: 'https://image.tmdb.org/t/p',
     },
   },
