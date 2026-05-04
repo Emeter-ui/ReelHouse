@@ -216,24 +216,12 @@ onBeforeUnmount(() => {
             <div v-if="director" class="text-sm text-slate-400">Directed by <span class="text-slate-200">{{ director }}</span></div>
             <div class="flex flex-wrap gap-3 pt-2">
               <div
-                v-if="availability === 'loading'"
-                class="chip text-slate-400"
-              >
-                Checking availability…
-              </div>
-              <div
-                v-else-if="availability === 'none'"
+                v-if="availability === 'none'"
                 class="chip text-amber-200 bg-amber-500/10 ring-1 ring-amber-400/30"
               >
                 Coming Soon
               </div>
-              <div
-                v-else-if="availability === 'error'"
-                class="chip text-red-300 bg-red-500/10 ring-1 ring-red-400/30"
-              >
-                Source unavailable
-              </div>
-              <div v-if="hasStreams" class="relative">
+              <div v-if="hasStreams || availability === 'loading'" class="relative">
                 <button
                   ref="playButton"
                   class="btn-primary"
@@ -263,7 +251,7 @@ onBeforeUnmount(() => {
                   </button>
                 </div>
               </div>
-              <div v-if="hasDownloads" class="relative">
+              <div v-if="hasDownloads || availability === 'loading'" class="relative">
                 <button
                   ref="downloadButton"
                   class="btn-ghost"

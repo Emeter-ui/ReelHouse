@@ -284,24 +284,12 @@ onBeforeUnmount(() => {
                 </option>
               </select>
               <div
-                v-if="availability === 'loading'"
-                class="chip text-slate-400 shrink-0"
-              >
-                Checking…
-              </div>
-              <div
-                v-else-if="availability === 'none'"
+                v-if="availability === 'none'"
                 class="chip text-amber-200 bg-amber-500/10 ring-1 ring-amber-400/30 shrink-0"
               >
                 Coming Soon
               </div>
-              <div
-                v-else-if="availability === 'error'"
-                class="chip text-red-300 bg-red-500/10 ring-1 ring-red-400/30 shrink-0"
-              >
-                Source unavailable
-              </div>
-              <div v-if="hasStreams" class="relative shrink-0">
+              <div v-if="hasStreams || availability === 'loading' || availability === 'idle'" class="relative shrink-0">
                 <button
                   ref="playButton"
                   class="btn-primary"
@@ -331,7 +319,7 @@ onBeforeUnmount(() => {
                   </button>
                 </div>
               </div>
-              <div v-if="hasDownloads" class="relative shrink-0">
+              <div v-if="hasDownloads || availability === 'loading' || availability === 'idle'" class="relative shrink-0">
                 <button
                   ref="downloadButton"
                   class="btn-ghost"
