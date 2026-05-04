@@ -11,7 +11,7 @@ export default defineNuxtConfig({
     dirs: ['composables']
   },
 
-  css: ['~/assets/css/main.css', 'plyr/dist/plyr.css'],
+  css: ['~/assets/css/main.css'],
 
   app: {
     head: {
