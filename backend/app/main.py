@@ -20,7 +20,7 @@ origins = [
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,  # ✅ Changed from settings.frontend_origin
+    allow_origin_regex=r"https://.*\.vercel\.app|https://.*\.netlify\.app|http://localhost:.*",
     allow_credentials=False,
     allow_methods=["GET"],
     allow_headers=["*"],
