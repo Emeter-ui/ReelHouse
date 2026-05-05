@@ -8,7 +8,8 @@
     "generate": "nuxt generate",
     "preview": "nuxt preview",
     "postinstall": "nuxt prepare",
-    "typecheck": "nuxt typecheck"
+    "typecheck": "nuxt typecheck",
+    "prepare": "nuxt prepare || true"
   },
   "dependencies": {
     "@vueuse/core": "^11.2.0",
