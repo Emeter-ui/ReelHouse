@@ -51,18 +51,13 @@ const activeQuality = computed(() => {
 const activeStreamUrl = computed(
   () => activeQuality.value?.url ?? props.resolved?.stream_url ?? null,
 )
-const activeCodec = computed(
-  () => activeQuality.value?.codec ?? props.resolved?.stream_codec ?? '',
-)
 
+// MovieBox's H5 play endpoint serves H.264; we don't advertise hvc1 so the
+// browser doesn't reject the source on engines without HEVC decode.
 const sourceType = computed(() => {
   const u = (activeStreamUrl.value ?? '').toLowerCase()
   if (u.includes('.m3u8')) return 'application/x-mpegURL'
-  const codec = activeCodec.value.toLowerCase()
-  const isHevc = codec
-    ? codec.includes('hevc') || codec.includes('265')
-    : u.includes('/h265/') || u.includes('/hevc/')
-  return isHevc ? 'video/mp4; codecs="hvc1"' : 'video/mp4'
+  return 'video/mp4'
 })
 
 // MovieBox returns captions in arbitrary order — English is rarely first.
@@ -288,12 +283,6 @@ onBeforeUnmount(() => {
         class="chip bg-black/60 text-amber-200 backdrop-blur-md border border-white/5"
       >
         via proxy
-      </div>
-      <div
-        v-if="sourceType.includes('hvc')"
-        class="chip bg-indigo-900/60 text-indigo-200 backdrop-blur-md border border-white/5"
-      >
-        HEVC (H.265)
       </div>
     </div>
 
