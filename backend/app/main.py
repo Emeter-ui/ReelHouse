@@ -14,6 +14,7 @@ origins = [
     "http://localhost:3000",
     "http://localhost:8003",
     "https://reel-house-ym69.vercel.app",
+    "https://reel-house-mocha.vercel.app",
     "https://reelmuvies.netlify.app",
 ]
 
