@@ -288,6 +288,32 @@ def _select_best_stream(streams: list[dict[str, Any]]) -> dict[str, Any] | None:
     return max(pool, key=res)
 
 
+def _merge_for_player(
+    play: list[dict[str, Any]], download: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Combine H5 play and mobile download variants, deduping by resolution and
+    preferring non-HEVC. MovieBox's H5 play endpoint frequently returns only
+    HEVC for a given resolution while the mobile download endpoint has an
+    H.264 copy at the same resolution — Firefox and many desktops can't decode
+    HEVC, so we cross-pollinate to give the player a browser-friendly pick."""
+    by_res: dict[str, dict[str, Any]] = {}
+    for q in play + download:
+        r = q.get("resolution")
+        if not r:
+            continue
+        existing = by_res.get(r)
+        if existing is None:
+            by_res[r] = q
+            continue
+        if _is_hevc(existing.get("codec")) and not _is_hevc(q.get("codec")):
+            by_res[r] = q
+    return sorted(
+        by_res.values(),
+        key=lambda q: int(str(q["resolution"]).rstrip("p")),
+        reverse=True,
+    )
+
+
 async def _resolve(
     title: str,
     year: int | None,
@@ -369,23 +395,15 @@ async def _resolve(
     if not qualities and not download_qualities:
         return None
 
-    # Pick the best stream from H5 play sources first.
-    chosen = _select_best_stream(qualities) if qualities else None
+    # Merge play + download variants so the player resolution picker (and the
+    # auto-selected stream below) prefer a non-HEVC copy when one exists in
+    # *either* source. download_qualities stays untouched for the Downloads UI.
+    qualities = _merge_for_player(qualities, download_qualities)
 
-    # Fallback: if no H5 play streams, use the best available mobile download link.
+    chosen = _select_best_stream(qualities)
     final_stream_url = chosen["url"] if chosen else None
     final_codec = (chosen.get("codec") if chosen else "") or ""
     final_format = (chosen.get("format") if chosen else "") or ""
-
-    if not final_stream_url and download_qualities:
-        chosen_dl = _select_best_stream(download_qualities)
-        if chosen_dl:
-            final_stream_url = chosen_dl["url"]
-            final_codec = chosen_dl.get("codec") or ""
-            final_format = chosen_dl.get("format") or ""
-            # If qualities was empty, populate it so the player has resolution data.
-            if not qualities:
-                qualities = download_qualities
 
     return {
         "stream_url": final_stream_url,
