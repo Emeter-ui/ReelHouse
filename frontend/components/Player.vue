@@ -1,6 +1,10 @@
 <script setup lang="ts">
+import videojs from 'video.js'
+import 'video.js/dist/video-js.css'
 import { canFetchDirect, captionsUrl, proxiedUrl, type StreamResolveResponse } from '~/composables/useStream'
 import { useContinueWatching } from '~/composables/useContinueWatching'
+
+type VjsPlayer = ReturnType<typeof videojs>
 
 type Props = {
   resolved: StreamResolveResponse | null
@@ -29,7 +33,9 @@ const isProdLocalhost = computed(() => {
   return isProd && apiBase.includes('localhost')
 })
 const videoError = ref<string | null>(null)
-let hlsInstance: any = null
+let player: VjsPlayer | null = null
+let remoteTracks: HTMLTrackElement[] = []
+const reloadPage = () => location.reload()
 
 // Pick the active stream from qualities[] when a preferredResolution is set;
 // otherwise fall back to the server-chosen stream_url.
@@ -59,32 +65,18 @@ const sourceType = computed(() => {
   return isHevc ? 'video/mp4; codecs="hvc1"' : 'video/mp4'
 })
 
-// Pick the first English caption (if any) so the browser auto-enables it.
-// MovieBox returns captions in arbitrary order — English is rarely index 0.
+// MovieBox returns captions in arbitrary order — English is rarely first.
 const defaultCaptionUrl = computed(() => {
   const list = props.resolved?.captions ?? []
   return list.find((c) => c.lang?.toLowerCase().startsWith('en'))?.url ?? null
 })
 
-// `<track srclang>` requires a valid BCP 47 tag. MovieBox sometimes returns
-// language names in their own scripts (e.g. "اَلْعَرَبِيَّةُ"), and slicing those
-// produces non-ASCII garbage that browsers reject — making the whole track
-// invalid and (in Chromium) hiding the CC button. Fall back to "und".
+// `<track srclang>` requires a valid BCP 47 tag. MovieBox sometimes labels
+// captions in their own scripts ("اَلْعَرَبِيَّةُ"); the slice would be non-ASCII
+// and rejected by browsers. Fall back to "und".
 const toSrcLang = (lang: string): string => {
   const slug = (lang || '').slice(0, 2).toLowerCase()
   return /^[a-z]{2}$/.test(slug) ? slug : 'und'
-}
-
-const onVideoError = () => {
-  const err = videoElement.value?.error
-  const codeMap: Record<number, string> = {
-    1: 'aborted',
-    2: 'network error',
-    3: 'decode error (codec not supported by your browser — likely HEVC/H.265)',
-    4: 'source not supported',
-  }
-  videoError.value = err ? (codeMap[err.code] || `error code ${err.code}`) : 'Playback error'
-  probeStatus.value = 'failed'
 }
 
 watch(
@@ -107,23 +99,16 @@ watch(
   { immediate: true },
 )
 
-// Continue Watching restore — only on the very first metadata load so quality
-// switches don't snap us back to a stale position.
 const previous = computed(() =>
   cw.find(props.contentId, props.contentType, props.season, props.episode),
 )
 let cwRestored = false
-const onLoadedMetadata = () => {
-  if (cwRestored) return
-  if (videoElement.value && previous.value) {
-    videoElement.value.currentTime = previous.value.position
-  }
-  cwRestored = true
-}
 
-const onTimeUpdate = () => {
-  const v = videoElement.value
-  if (!v || !v.duration || isNaN(v.duration)) return
+const upsertProgress = () => {
+  if (!player) return
+  const cur = player.currentTime() ?? 0
+  const dur = player.duration() ?? 0
+  if (!dur || isNaN(dur)) return
   cw.upsert({
     id: props.contentId,
     type: props.contentType,
@@ -131,54 +116,109 @@ const onTimeUpdate = () => {
     poster: props.contentPoster,
     season: props.season,
     episode: props.episode,
-    position: Math.floor(v.currentTime),
-    duration: Math.floor(v.duration),
+    position: Math.floor(cur),
+    duration: Math.floor(dur),
   })
 }
 
-const applySource = async () => {
-  const v = videoElement.value
-  if (!v || !finalSrc.value) return
+// Re-add captions to the player. Remote tracks added with manualCleanup=true
+// persist across source changes, so we remove them explicitly when the
+// captions list changes (e.g. when navigating to a different episode).
+const syncCaptions = () => {
+  if (!player) return
+  for (const el of remoteTracks) player.removeRemoteTextTrack(el)
+  remoteTracks = []
+  const captions = props.resolved?.captions ?? []
+  const defaultUrl = defaultCaptionUrl.value
+  for (const c of captions) {
+    const trackEl = player.addRemoteTextTrack(
+      {
+        kind: 'subtitles',
+        label: c.lang,
+        srclang: toSrcLang(c.lang),
+        src: captionsUrl(c.url),
+        default: c.url === defaultUrl,
+      },
+      true,
+    )
+    if (trackEl) remoteTracks.push(trackEl as unknown as HTMLTrackElement)
+  }
+}
 
+const applySource = () => {
+  if (!player || !finalSrc.value) return
   videoError.value = null
-
-  if (hlsInstance) {
-    hlsInstance.destroy()
-    hlsInstance = null
-  }
-
-  const isHls = finalSrc.value.toLowerCase().includes('.m3u8')
-  if (isHls) {
-    if (v.canPlayType('application/vnd.apple.mpegurl')) {
-      v.src = finalSrc.value
-    } else {
-      const Hls = (await import('hls.js')).default
-      if (Hls.isSupported()) {
-        hlsInstance = new Hls()
-        hlsInstance.loadSource(finalSrc.value)
-        hlsInstance.attachMedia(v)
-      } else {
-        v.src = finalSrc.value
-      }
-    }
-  } else {
-    v.src = finalSrc.value
-  }
-
-  // Best-effort autoplay; browsers may require muted autoplay if blocked.
-  v.play().catch(() => {
+  player.src({ src: finalSrc.value, type: sourceType.value })
+  player.play()?.catch(() => {
     /* autoplay-blocked is fine; user can click play */
   })
 }
 
+const initPlayer = () => {
+  if (player || !videoElement.value) return
+  player = videojs(videoElement.value, {
+    controls: true,
+    preload: 'auto',
+    fluid: false,
+    fill: true,
+    responsive: true,
+    playsinline: true,
+    crossOrigin: 'anonymous',
+    poster: props.contentPoster ?? undefined,
+    controlBar: {
+      pictureInPictureToggle: true,
+      remainingTimeDisplay: true,
+      subsCapsButton: true,
+    },
+    html5: {
+      vhs: { overrideNative: true },
+    },
+  })
+
+  player.on('loadedmetadata', () => {
+    if (cwRestored) return
+    if (previous.value && player) {
+      player.currentTime(previous.value.position)
+    }
+    cwRestored = true
+  })
+
+  player.on('timeupdate', upsertProgress)
+
+  player.on('error', () => {
+    const err = player?.error()
+    const codeMap: Record<number, string> = {
+      1: 'aborted',
+      2: 'network error',
+      3: 'decode error (codec not supported by your browser — likely HEVC/H.265)',
+      4: 'source not supported',
+    }
+    videoError.value = err
+      ? codeMap[err.code] || `error code ${err.code}`
+      : 'Playback error'
+    probeStatus.value = 'failed'
+  })
+
+  // First source + captions if already resolved by the time we mount.
+  if (finalSrc.value) applySource()
+  syncCaptions()
+}
+
 watch(finalSrc, applySource)
-onMounted(() => applySource())
+watch(
+  [() => props.resolved?.captions, defaultCaptionUrl],
+  syncCaptions,
+)
+
+onMounted(() => initPlayer())
 
 onBeforeUnmount(() => {
-  if (hlsInstance) hlsInstance.destroy()
   cw.flush()
+  if (player) {
+    player.dispose()
+    player = null
+  }
 })
-
 </script>
 
 <template>
@@ -222,40 +262,24 @@ onBeforeUnmount(() => {
             </template>
           </p>
         </div>
-        <button 
+        <button
           class="px-4 py-2 bg-white/10 hover:bg-white/20 border border-white/10 rounded-full text-xs font-medium transition-colors"
-          @click="window.location.reload()"
+          @click="reloadPage"
         >
           Try Again
         </button>
       </div>
     </div>
 
-    <!-- Native HTML5 player (browser default UI). crossorigin is required
-         for cross-origin <track> subtitles to load. -->
-    <video
-      v-show="finalSrc"
-      ref="videoElement"
-      controls
-      controlsList="nodownload"
-      playsinline
-      crossorigin="anonymous"
-      :poster="contentPoster ?? undefined"
-      class="w-full h-full bg-black"
-      @loadedmetadata="onLoadedMetadata"
-      @timeupdate="onTimeUpdate"
-      @error="onVideoError"
-    >
-      <track
-        v-for="c in (resolved?.captions || [])"
-        :key="c.url"
-        kind="subtitles"
-        :label="c.lang"
-        :srclang="toSrcLang(c.lang)"
-        :src="captionsUrl(c.url)"
-        :default="c.url === defaultCaptionUrl"
+    <!-- video.js mounts inside this <video> element. crossOrigin propagates
+         to <track> requests so VTT subtitles load over CORS. -->
+    <div v-show="finalSrc" class="absolute inset-0 w-full h-full">
+      <video
+        ref="videoElement"
+        class="video-js vjs-default-skin vjs-big-play-centered w-full h-full"
+        playsinline
       />
-    </video>
+    </div>
 
     <!-- UI Overlays (Chips) -->
     <div class="absolute top-4 left-4 flex gap-2 z-10 pointer-events-none">
@@ -281,3 +305,27 @@ onBeforeUnmount(() => {
     </div>
   </div>
 </template>
+
+<style>
+/* Make the video.js skin fill its container instead of using vjs-fluid's
+   intrinsic aspect ratio (we already enforce 16:9 on the wrapper). */
+.video-js {
+  width: 100%;
+  height: 100%;
+  background: #000;
+}
+.video-js .vjs-tech {
+  object-fit: contain;
+}
+/* Brand the player in our accent gold to match the rest of the UI. */
+.video-js .vjs-play-progress,
+.video-js .vjs-volume-level,
+.video-js .vjs-slider-bar {
+  background-color: #eab308;
+}
+.video-js .vjs-big-play-button {
+  background-color: rgba(0, 0, 0, 0.6);
+  border-color: rgba(255, 255, 255, 0.2);
+  border-radius: 9999px;
+}
+</style>
