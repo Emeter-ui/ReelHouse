@@ -230,6 +230,7 @@ onBeforeUnmount(() => {
       @timeupdate="onTimeUpdate"
       @error="onVideoError"
     >
+      <source v-if="finalSrc && !finalSrc.includes('.m3u8')" :src="finalSrc" :type="sourceType" />
       <track
         v-for="(c, i) in (resolved?.captions || [])"
         :key="c.url"
@@ -248,6 +249,12 @@ onBeforeUnmount(() => {
         class="chip bg-black/60 text-amber-200 backdrop-blur-md border border-white/5"
       >
         via proxy
+      </div>
+      <div
+        v-if="sourceType.includes('hvc')"
+        class="chip bg-indigo-900/60 text-indigo-200 backdrop-blur-md border border-white/5"
+      >
+        HEVC (H.265)
       </div>
     </div>
 
