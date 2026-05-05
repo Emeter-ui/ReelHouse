@@ -12,8 +12,6 @@ dependencies = [
   "moviebox-api",
 ]
 
-[tool.uv.sources]
-moviebox-api = { path = "../moviebox-api-main", editable = true }
 
 [build-system]
 requires = ["hatchling"]
