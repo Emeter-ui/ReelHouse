@@ -10,9 +10,16 @@ settings = get_settings()
 
 app = FastAPI(title="Reelhouse Backend", version="0.1.0")
 
+origins = [
+    "http://localhost:3000",
+    "http://localhost:8003",
+    "https://reel-house-ym69.vercel.app",
+    "https://reelmuvies.netlify.app",
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.frontend_origin, "http://localhost:3001"],
+    allow_origins=origins,  # ✅ Changed from settings.frontend_origin
     allow_credentials=False,
     allow_methods=["GET"],
     allow_headers=["*"],
