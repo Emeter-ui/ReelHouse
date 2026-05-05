@@ -33,9 +33,12 @@ def best_match(
     if not candidates or not target_title:
         return None
 
+    # Case-fold both sides — rapidfuzz's token_set_ratio is case-sensitive by
+    # default, so TMDB titles like "LIAR GAME" miss MovieBox's "Liar Game".
+    target_norm = target_title.casefold()
     scored: list[tuple[int, Candidate, bool]] = []
     for c in candidates:
-        score = int(fuzz.token_set_ratio(target_title, c.title))
+        score = int(fuzz.token_set_ratio(target_norm, c.title.casefold()))
         year_ok = (
             target_year is not None
             and c.year is not None

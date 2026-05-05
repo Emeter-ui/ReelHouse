@@ -46,8 +46,17 @@ _X_CLIENT_INFO = '{"timezone":"Africa/Nairobi"}'
 _SESSION_COOKIES = {"uuid": "d8c3539e-2e46-4000-af20-7046a856e30a"}
 
 
-def _cache_key(tmdb_id: int, season: int | None, episode: int | None) -> str:
-    return f"{tmdb_id}:{season or ''}:{episode or ''}"
+def _cache_key(
+    source_id: int | str | None,
+    title: str,
+    year: int | None,
+    season: int | None,
+    episode: int | None,
+) -> str:
+    # Anime callers (AniList) have no tmdb_id — fall back to title+year so
+    # cache hits still happen across repeated lookups.
+    base = source_id if source_id is not None else f"{title.casefold()}|{year or ''}"
+    return f"{base}:{season or ''}:{episode or ''}"
 
 
 def _slug_from_url(url: str | None) -> str | None:
@@ -216,7 +225,9 @@ async def _fetch_download_files(
     (season, episode). Movies map to season=0/episode=0 in this API, in which
     case any returned files belong to the movie itself."""
     found: list[VideoFileMetadata] = []
-    seen: set[tuple[int | None, int | None, str | None, str]] = set()
+    # Dedup on logical identity, NOT the signed URL — MovieBox re-signs on
+    # every call so the URL differs across the two passes for the same file.
+    seen: set[tuple[int | None, int | None, int | None, str | None]] = set()
     is_series = season != 0 or episode != 0
 
     # Two passes pick up both the high-quality archive (default resolution)
@@ -238,10 +249,10 @@ async def _fetch_download_files(
                 if is_series and (v.season != season or v.episode != episode):
                     continue
                 key = (
+                    v.season,
+                    v.episode,
                     v.resolution,
                     getattr(v, "codec_name", None),
-                    str(v.resource_link),
-                    "v",
                 )
                 if key in seen:
                     continue
@@ -371,11 +382,12 @@ async def _resolve(
 
 @router.get("/stream/movie")
 async def stream_movie(
-    tmdb_id: int = Query(...),
     title: str = Query(...),
     year: int | None = Query(default=None),
+    tmdb_id: int | None = Query(default=None),
+    anilist_id: int | None = Query(default=None),
 ) -> dict[str, Any]:
-    key = _cache_key(tmdb_id, None, None)
+    key = _cache_key(tmdb_id or anilist_id, title, year, None, None)
     cached = _cache.get(key)
     if cached is not None:
         return cached
@@ -390,13 +402,14 @@ async def stream_movie(
 
 @router.get("/stream/series")
 async def stream_series(
-    tmdb_id: int = Query(...),
     title: str = Query(...),
     season: int = Query(...),
     episode: int = Query(...),
     year: int | None = Query(default=None),
+    tmdb_id: int | None = Query(default=None),
+    anilist_id: int | None = Query(default=None),
 ) -> dict[str, Any]:
-    key = _cache_key(tmdb_id, season, episode)
+    key = _cache_key(tmdb_id or anilist_id, title, year, season, episode)
     cached = _cache.get(key)
     if cached is not None:
         return cached

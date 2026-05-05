@@ -55,7 +55,12 @@ def _is_allowed_target(url: str) -> bool:
 
 
 @router.api_route("/proxy", methods=["GET", "HEAD"])
-async def proxy(url: str, request: Request, referer: str | None = None) -> StreamingResponse:
+async def proxy(
+    url: str,
+    request: Request,
+    referer: str | None = None,
+    dl: str | None = None,
+) -> StreamingResponse:
     if not _is_allowed_target(url):
         raise HTTPException(status_code=400, detail={"error": "invalid url"})
 
@@ -95,8 +100,16 @@ async def proxy(url: str, request: Request, referer: str | None = None) -> Strea
 
     media_type = upstream.headers.get("content-type", "application/octet-stream")
     
+    # If 'dl' is set, force an attachment download with that filename and 
+    # use application/octet-stream to discourage the browser from playing it.
+    if dl:
+        # Ensure the filename is safe for headers
+        safe_dl = dl.replace('"', "'")
+        response_headers["Content-Disposition"] = f'attachment; filename="{safe_dl}"'
+        media_type = "application/octet-stream"
+    
     # If content-type is missing or generic, try guessing from URL.
-    if media_type == "application/octet-stream" or not media_type:
+    elif media_type == "application/octet-stream" or not media_type:
         guessed, _ = mimetypes.guess_type(url)
         if guessed:
             media_type = guessed
