@@ -268,21 +268,22 @@ async def _fetch_download_files(
     return found
 
 
+def _is_hevc(codec: str | None) -> bool:
+    c = (codec or "").lower()
+    return "hevc" in c or "265" in c
+
+
 def _select_best_stream(streams: list[dict[str, Any]]) -> dict[str, Any] | None:
     if not streams:
         return None
 
-    def is_hevc(s: dict[str, Any]) -> bool:
-        codec = (s.get("codecName") or "").lower()
-        return "hevc" in codec or "265" in codec
-
     def res(s: dict[str, Any]) -> int:
         try:
-            return int(s.get("resolutions") or 0)
+            return int(str(s.get("resolution") or s.get("resolutions") or 0).rstrip("p"))
         except (TypeError, ValueError):
             return 0
 
-    non_hevc = [s for s in streams if not is_hevc(s)]
+    non_hevc = [s for s in streams if not _is_hevc(s.get("codec") or s.get("codecName"))]
     pool = non_hevc or streams
     return max(pool, key=res)
 
@@ -368,21 +369,23 @@ async def _resolve(
     if not qualities and not download_qualities:
         return None
 
-    chosen = _select_best_stream(streams) if streams else None
+    # Pick the best stream from H5 play sources first.
+    chosen = _select_best_stream(qualities) if qualities else None
 
     # Fallback: if no H5 play streams, use the best available mobile download link.
     final_stream_url = chosen["url"] if chosen else None
-    final_codec = (chosen.get("codecName") if chosen else "") or ""
+    final_codec = (chosen.get("codec") if chosen else "") or ""
     final_format = (chosen.get("format") if chosen else "") or ""
 
     if not final_stream_url and download_qualities:
-        best_dl = download_qualities[0]
-        final_stream_url = best_dl["url"]
-        final_codec = best_dl.get("codec") or ""
-        final_format = best_dl.get("format") or ""
-        # If qualities was empty, populate it so the player has resolution data.
-        if not qualities:
-            qualities = download_qualities
+        chosen_dl = _select_best_stream(download_qualities)
+        if chosen_dl:
+            final_stream_url = chosen_dl["url"]
+            final_codec = chosen_dl.get("codec") or ""
+            final_format = chosen_dl.get("format") or ""
+            # If qualities was empty, populate it so the player has resolution data.
+            if not qualities:
+                qualities = download_qualities
 
     return {
         "stream_url": final_stream_url,
