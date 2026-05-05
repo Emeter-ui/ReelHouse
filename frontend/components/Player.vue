@@ -186,15 +186,32 @@ onBeforeUnmount(() => {
     <!-- Overlay: Error / Unavailable -->
     <div
       v-else-if="error || !resolved || !activeStreamUrl"
-      class="absolute inset-0 flex items-center justify-center px-6 text-center text-slate-300 z-20"
+      class="absolute inset-0 flex items-center justify-center px-6 text-center text-slate-300 z-20 bg-black/40 backdrop-blur-sm"
     >
-      <div class="max-w-xs space-y-2">
-        <p class="font-medium text-red-400">
-          {{ error ? 'Connection error' : (!resolved || !activeStreamUrl ? 'Source unavailable' : 'Error') }}
-        </p>
-        <p class="text-sm text-slate-400">
-          {{ isProdLocalhost ? 'Frontend is trying to reach localhost:8003 from a production site. Please set NUXT_PUBLIC_API_BASE in Vercel settings.' : (error ? 'Could not reach the backend server. Please check your connection.' : 'The stream could not be resolved. Please try another title or quality.') }}
-        </p>
+      <div class="max-w-xs space-y-4">
+        <div class="space-y-2">
+          <p class="font-semibold text-red-400 flex items-center justify-center gap-2">
+            <span class="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
+            {{ error ? 'Connection Error' : (!resolved || !activeStreamUrl ? 'Source Unavailable' : 'Error') }}
+          </p>
+          <p class="text-sm text-slate-400 leading-relaxed">
+            <template v-if="isProdLocalhost">
+              Frontend is trying to reach localhost:8003 from a production site. Please set NUXT_PUBLIC_API_BASE in Vercel settings.
+            </template>
+            <template v-else-if="error">
+              Could not reach the backend server. The request may have timed out or the server is offline.
+            </template>
+            <template v-else>
+              This title is currently unavailable for streaming. It may be coming soon or restricted in your region.
+            </template>
+          </p>
+        </div>
+        <button 
+          class="px-4 py-2 bg-white/10 hover:bg-white/20 border border-white/10 rounded-full text-xs font-medium transition-colors"
+          @click="window.location.reload()"
+        >
+          Try Again
+        </button>
       </div>
     </div>
 
