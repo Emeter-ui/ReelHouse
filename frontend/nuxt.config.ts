@@ -5,6 +5,9 @@ export default defineNuxtConfig({
 
   // SPA mode — all data comes from the FastAPI backend at runtime; no SEO need.
   ssr: false,
+  nitro: {
+    preset: 'static'
+  },
 
   modules: ['@nuxtjs/tailwindcss'],
   imports: {
