@@ -7,6 +7,7 @@ not designed for browser `<video>`.
 """
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 from urllib.parse import urlparse
 
@@ -133,7 +134,7 @@ async def _resolve_play_domain(client: httpx.AsyncClient) -> str:
                 "X-Client-Info": _X_CLIENT_INFO,
                 "X-Client-Type": "h5",
             },
-            timeout=5,
+            timeout=10,
         )
         if r.status_code == 200:
             domain = (r.json().get("data") or _PLAY_DOMAIN_FALLBACK).rstrip("/")
@@ -173,7 +174,7 @@ async def _fetch_play_streams(
         headers=headers,
         params=params,
         cookies=_SESSION_COOKIES,
-        timeout=15,
+        timeout=30,
     )
     r.raise_for_status()
     return (r.json() or {}).get("data") or {}
@@ -200,7 +201,7 @@ async def _fetch_captions(
             headers=headers,
             params=params,
             cookies=_SESSION_COOKIES,
-            timeout=10,
+            timeout=20,
         )
         r.raise_for_status()
         captions = ((r.json() or {}).get("data") or {}).get("captions") or []
@@ -219,7 +220,7 @@ async def _fetch_download_files(
     season: int,
     episode: int,
     *,
-    max_pages: int = 25,
+    max_pages: int = 5,
 ) -> list[VideoFileMetadata]:
     """Page MovieBox's mobile resource endpoint and return files matching
     (season, episode). Movies map to season=0/episode=0 in this API, in which
@@ -302,28 +303,31 @@ async def _resolve(
         target_subject_id, detail_path = await _resolve_target(
             client, match.subject_id, match.detail_path
         )
-        # Mobile-resource lookup uses the same MovieBoxHttpClient session.
-        # Empty/error means downloads simply aren't available.
-        try:
-            download_files = await _fetch_download_files(
-                client, target_subject_id, se, ep
-            )
-        except Exception:
-            download_files = []
 
-    async with httpx.AsyncClient() as web:
-        domain = await _resolve_play_domain(web)
-        try:
-            play_data = await _fetch_play_streams(
+        # Kick off mobile download lookup and domain discovery in parallel.
+        download_task = _fetch_download_files(client, target_subject_id, se, ep)
+
+        async with httpx.AsyncClient() as web:
+            domain_task = _resolve_play_domain(web)
+            
+            # Wait for both initial tasks.
+            download_files, domain = await asyncio.gather(download_task, domain_task)
+
+            # Now fetch play streams and captions in parallel using the domain.
+            streams_task = _fetch_play_streams(
                 domain, web, target_subject_id, detail_path, se, ep
             )
-            streams = play_data.get("streams") or []
-        except httpx.HTTPError:
-            streams = []
+            captions_task = _fetch_captions(
+                domain, web, target_subject_id, detail_path, se, ep
+            )
 
-        captions = await _fetch_captions(
-            domain, web, target_subject_id, detail_path, se, ep
-        )
+            try:
+                play_data = await streams_task
+                streams = play_data.get("streams") or []
+            except httpx.HTTPError:
+                streams = []
+
+            captions = await captions_task
 
     qualities: list[dict[str, Any]] = []
     for s in streams:
@@ -366,10 +370,24 @@ async def _resolve(
 
     chosen = _select_best_stream(streams) if streams else None
 
+    # Fallback: if no H5 play streams, use the best available mobile download link.
+    final_stream_url = chosen["url"] if chosen else None
+    final_codec = (chosen.get("codecName") if chosen else "") or ""
+    final_format = (chosen.get("format") if chosen else "") or ""
+
+    if not final_stream_url and download_qualities:
+        best_dl = download_qualities[0]
+        final_stream_url = best_dl["url"]
+        final_codec = best_dl.get("codec") or ""
+        final_format = best_dl.get("format") or ""
+        # If qualities was empty, populate it so the player has resolution data.
+        if not qualities:
+            qualities = download_qualities
+
     return {
-        "stream_url": chosen["url"] if chosen else None,
-        "stream_codec": (chosen.get("codecName") if chosen else "") or "",
-        "stream_format": (chosen.get("format") if chosen else "") or "",
+        "stream_url": final_stream_url,
+        "stream_codec": final_codec,
+        "stream_format": final_format,
         # CDN does Referer-allowlisting against MovieBox's current play domain.
         # The browser can't spoof Referer, so the proxy needs this to fetch bytes.
         "play_referer": domain.rstrip("/") + "/",
