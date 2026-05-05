@@ -22,6 +22,12 @@ const cw = useContinueWatching()
 const videoElement = ref<HTMLVideoElement | null>(null)
 const finalSrc = ref<string | null>(null)
 const probeStatus = ref<'idle' | 'probing' | 'direct' | 'proxied' | 'failed'>('idle')
+const { public: { apiBase } } = useRuntimeConfig()
+const isProdLocalhost = computed(() => {
+  if (process.server) return false
+  const isProd = window.location.hostname !== 'localhost'
+  return isProd && apiBase.includes('localhost')
+})
 const videoError = ref<string | null>(null)
 let hlsInstance: any = null
 
@@ -169,14 +175,26 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <!-- Overlay: Error -->
+    <!-- Overlay: Probing -->
+    <div v-else-if="probeStatus === 'probing'" class="absolute inset-0 flex items-center justify-center text-slate-400 z-20 pointer-events-none">
+      <div class="flex flex-col items-center gap-3">
+        <div class="w-8 h-8 border-2 border-accent-gold/30 border-t-accent-gold rounded-full animate-spin" />
+        <span class="text-sm font-medium tracking-wide">Connecting to source…</span>
+      </div>
+    </div>
+
+    <!-- Overlay: Error / Unavailable -->
     <div
-      v-else-if="error || !resolved"
+      v-else-if="error || !resolved || !activeStreamUrl"
       class="absolute inset-0 flex items-center justify-center px-6 text-center text-slate-300 z-20"
     >
       <div class="max-w-xs space-y-2">
-        <p class="font-medium text-red-400">Source unavailable</p>
-        <p class="text-sm text-slate-400">The stream could not be resolved. Please try another title or quality.</p>
+        <p class="font-medium text-red-400">
+          {{ error ? 'Connection error' : (!resolved || !activeStreamUrl ? 'Source unavailable' : 'Error') }}
+        </p>
+        <p class="text-sm text-slate-400">
+          {{ isProdLocalhost ? 'Frontend is trying to reach localhost:8003 from a production site. Please set NUXT_PUBLIC_API_BASE in Vercel settings.' : (error ? 'Could not reach the backend server. Please check your connection.' : 'The stream could not be resolved. Please try another title or quality.') }}
+        </p>
       </div>
     </div>
 
