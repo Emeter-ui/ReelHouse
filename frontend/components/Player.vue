@@ -59,6 +59,22 @@ const sourceType = computed(() => {
   return isHevc ? 'video/mp4; codecs="hvc1"' : 'video/mp4'
 })
 
+// Pick the first English caption (if any) so the browser auto-enables it.
+// MovieBox returns captions in arbitrary order — English is rarely index 0.
+const defaultCaptionUrl = computed(() => {
+  const list = props.resolved?.captions ?? []
+  return list.find((c) => c.lang?.toLowerCase().startsWith('en'))?.url ?? null
+})
+
+// `<track srclang>` requires a valid BCP 47 tag. MovieBox sometimes returns
+// language names in their own scripts (e.g. "اَلْعَرَبِيَّةُ"), and slicing those
+// produces non-ASCII garbage that browsers reject — making the whole track
+// invalid and (in Chromium) hiding the CC button. Fall back to "und".
+const toSrcLang = (lang: string): string => {
+  const slug = (lang || '').slice(0, 2).toLowerCase()
+  return /^[a-z]{2}$/.test(slug) ? slug : 'und'
+}
+
 const onVideoError = () => {
   const err = videoElement.value?.error
   const codeMap: Record<number, string> = {
@@ -230,15 +246,14 @@ onBeforeUnmount(() => {
       @timeupdate="onTimeUpdate"
       @error="onVideoError"
     >
-      <source v-if="finalSrc && !finalSrc.includes('.m3u8')" :src="finalSrc" :type="sourceType" />
       <track
-        v-for="(c, i) in (resolved?.captions || [])"
+        v-for="c in (resolved?.captions || [])"
         :key="c.url"
         kind="subtitles"
         :label="c.lang"
-        :srclang="c.lang.slice(0, 2).toLowerCase()"
+        :srclang="toSrcLang(c.lang)"
         :src="captionsUrl(c.url)"
-        :default="i === 0 && c.lang.toLowerCase().startsWith('en')"
+        :default="c.url === defaultCaptionUrl"
       />
     </video>
 
