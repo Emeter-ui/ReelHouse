@@ -2,8 +2,9 @@
 import { tmdbImg } from '~/composables/useTmdb'
 type Props = {
   id: number
-  type?: 'movie' | 'series'
+  type?: 'movie' | 'series' | 'anime'
   title: string
+  /** TMDB path like "/abc.jpg" OR a full URL (anime). Auto-detected. */
   poster: string | null
   year?: number | null
   rating?: number | null
@@ -16,9 +17,17 @@ const props = withDefaults(defineProps<Props>(), {
   rating: null,
 })
 
-const link = computed(() =>
-  props.type === 'series' ? `/series/${props.id}` : `/movie/${props.id}`,
-)
+const link = computed(() => {
+  if (props.type === 'series') return `/series/${props.id}`
+  if (props.type === 'anime') return `/anime/${props.id}`
+  return `/movie/${props.id}`
+})
+
+const posterSrc = computed(() => {
+  if (!props.poster) return ''
+  // Full URL (AniList) → use as-is. Otherwise TMDB image path.
+  return /^https?:\/\//.test(props.poster) ? props.poster : tmdbImg(props.poster, 'w300')
+})
 
 const widthClass = computed(() => {
   if (props.size === 'sm') return 'w-28 sm:w-36'
@@ -31,8 +40,8 @@ const widthClass = computed(() => {
   <NuxtLink :to="link" class="card block group snap-start shrink-0" :class="widthClass">
     <div class="aspect-[2/3] bg-ink-800 relative overflow-hidden">
       <img
-        v-if="poster"
-        :src="tmdbImg(poster, 'w300')"
+        v-if="posterSrc"
+        :src="posterSrc"
         :alt="title"
         loading="lazy"
         class="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"

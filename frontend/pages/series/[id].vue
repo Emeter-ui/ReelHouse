@@ -169,13 +169,11 @@ watch(
 )
 
 const togglePicker = () => {
-  if (!hasDownloads.value) return
   pickerOpen.value = !pickerOpen.value
   if (pickerOpen.value) playPickerOpen.value = false
 }
 
 const togglePlayPicker = () => {
-  if (!hasStreams.value) return
   playPickerOpen.value = !playPickerOpen.value
   if (playPickerOpen.value) pickerOpen.value = false
 }
@@ -192,9 +190,10 @@ const playOption = (opt: StreamOption) => {
 const downloadOption = (opt: StreamOption) => {
   if (!series.value) return
   const safe = `${series.value.name} S${activeSeason.value}E${activeEpisode.value}`.replace(/[\\/:*?"<>|]+/g, ' ').trim()
+  const filename = `${safe}.mp4`
   const a = document.createElement('a')
-  a.href = proxiedUrl(opt.url, playReferer.value)
-  a.download = `${safe}.mp4`
+  a.href = proxiedUrl(opt.url, playReferer.value, filename)
+  a.download = filename
   a.target = '_blank'
   a.rel = 'noopener'
   document.body.appendChild(a)
@@ -283,13 +282,7 @@ onBeforeUnmount(() => {
                   E{{ e.episode_number }} — {{ e.name }}
                 </option>
               </select>
-              <div
-                v-if="availability === 'none'"
-                class="chip text-amber-200 bg-amber-500/10 ring-1 ring-amber-400/30 shrink-0"
-              >
-                Coming Soon
-              </div>
-              <div v-if="hasStreams || availability === 'loading' || availability === 'idle'" class="relative shrink-0">
+              <div class="relative shrink-0">
                 <button
                   ref="playButton"
                   class="btn-primary"
@@ -306,8 +299,21 @@ onBeforeUnmount(() => {
                   class="absolute z-20 mt-2 left-0 min-w-[14rem] bg-ink-900
                          ring-1 ring-white/10 rounded-lg shadow-xl p-1"
                 >
+                  <div
+                    v-if="availability === 'loading' || availability === 'idle'"
+                    class="px-3 py-2 text-sm text-slate-400"
+                  >
+                    Loading…
+                  </div>
+                  <div
+                    v-else-if="!streamQualities.length"
+                    class="px-3 py-2 text-sm text-slate-400"
+                  >
+                    Not available.
+                  </div>
                   <button
                     v-for="q in streamQualities"
+                    v-else
                     :key="q.url"
                     role="menuitem"
                     class="w-full flex items-center justify-between gap-4 px-3 py-2
@@ -319,7 +325,7 @@ onBeforeUnmount(() => {
                   </button>
                 </div>
               </div>
-              <div v-if="hasDownloads || availability === 'loading' || availability === 'idle'" class="relative shrink-0">
+              <div class="relative shrink-0">
                 <button
                   ref="downloadButton"
                   class="btn-ghost"
@@ -336,8 +342,21 @@ onBeforeUnmount(() => {
                   class="absolute z-20 mt-2 right-0 min-w-[14rem] bg-ink-900
                          ring-1 ring-white/10 rounded-lg shadow-xl p-1"
                 >
+                  <div
+                    v-if="availability === 'loading' || availability === 'idle'"
+                    class="px-3 py-2 text-sm text-slate-400"
+                  >
+                    Loading…
+                  </div>
+                  <div
+                    v-else-if="!downloadQualities.length"
+                    class="px-3 py-2 text-sm text-slate-400"
+                  >
+                    Not available.
+                  </div>
                   <button
                     v-for="q in downloadQualities"
+                    v-else
                     :key="q.url"
                     role="menuitem"
                     class="w-full flex items-center justify-between gap-4 px-3 py-2

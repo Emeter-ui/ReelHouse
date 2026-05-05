@@ -71,6 +71,7 @@ const links = [
   { to: '/', label: 'Home' },
   { to: '/movies', label: 'Movies' },
   { to: '/series', label: 'Series' },
+  { to: '/anime', label: 'Anime' },
   { to: '/collection', label: 'Collections' },
   { to: '/my-list', label: 'My List' },
 ]

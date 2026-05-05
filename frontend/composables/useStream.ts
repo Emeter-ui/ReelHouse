@@ -76,14 +76,25 @@ export function useSeriesStream(
 }
 
 /**
+ * Backend-served caption URL. Fetches the upstream subtitle (typically SRT
+ * from MovieBox) and converts to WebVTT, which is what `<track>` requires.
+ */
+export function captionsUrl(rawUrl: string) {
+  const { public: { apiBase } } = useRuntimeConfig()
+  return `${apiBase}/api/captions?url=${encodeURIComponent(rawUrl)}`
+}
+
+/**
  * Build a backend byte-proxy URL. Used as the fallback `<source>` when a
  * direct CDN URL fails the CORS / Referer probe. Pass `referer` so the
  * proxy can send the Referer the upstream CDN expects.
  */
-export function proxiedUrl(rawUrl: string, referer?: string) {
+export function proxiedUrl(rawUrl: string, referer?: string, downloadAs?: string) {
   const { public: { apiBase } } = useRuntimeConfig()
-  const base = `${apiBase}/api/proxy?url=${encodeURIComponent(rawUrl)}`
-  return referer ? `${base}&referer=${encodeURIComponent(referer)}` : base
+  let url = `${apiBase}/api/proxy?url=${encodeURIComponent(rawUrl)}`
+  if (referer) url += `&referer=${encodeURIComponent(referer)}`
+  if (downloadAs) url += `&dl=${encodeURIComponent(downloadAs)}`
+  return url
 }
 
 /**
