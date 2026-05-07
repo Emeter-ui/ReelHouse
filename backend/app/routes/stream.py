@@ -8,10 +8,11 @@ not designed for browser `<video>`.
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any
 from urllib.parse import urlparse
 
-import httpx
+from curl_cffi.requests import AsyncSession
 from fastapi import APIRouter, HTTPException, Query
 from moviebox_api.v1.constants import SubjectType
 from moviebox_api.v3.constants import ResolutionType
@@ -21,6 +22,12 @@ from moviebox_api.v3.models.downloadables import VideoFileMetadata
 
 from ..cache import TTLCache
 from ..matching import Candidate, best_match
+
+logger = logging.getLogger(__name__)
+
+# Impersonate real Chrome's TLS fingerprint so MovieBox doesn't flag the
+# request as bot traffic from the (datacenter) backend host.
+_IMPERSONATE = "chrome124"
 
 router = APIRouter()
 
@@ -124,7 +131,7 @@ async def _resolve_target(
     return target_id, target_slug or fallback_detail_path
 
 
-async def _resolve_play_domain(client: httpx.AsyncClient) -> str:
+async def _resolve_play_domain(client: AsyncSession) -> str:
     try:
         r = await client.get(
             _PLAY_DOMAIN_DISCOVERY,
@@ -147,7 +154,7 @@ async def _resolve_play_domain(client: httpx.AsyncClient) -> str:
 
 async def _fetch_play_streams(
     domain: str,
-    client: httpx.AsyncClient,
+    client: AsyncSession,
     subject_id: str,
     detail_path: str | None,
     se: int,
@@ -177,12 +184,20 @@ async def _fetch_play_streams(
         timeout=30,
     )
     r.raise_for_status()
-    return (r.json() or {}).get("data") or {}
+    data = (r.json() or {}).get("data") or {}
+    streams = data.get("streams") or []
+    codecs = sorted({(s.get("codecName") or "?") for s in streams})
+    resolutions = sorted({(s.get("resolutions") or "?") for s in streams})
+    logger.info(
+        "[play] subject_id=%s status=%d streams=%d codecs=%s resolutions=%s",
+        subject_id, r.status_code, len(streams), codecs, resolutions,
+    )
+    return data
 
 
 async def _fetch_captions(
     domain: str,
-    client: httpx.AsyncClient,
+    client: AsyncSession,
     subject_id: str,
     detail_path: str | None,
     se: int,
@@ -341,9 +356,9 @@ async def _resolve(
         # Kick off mobile download lookup and domain discovery in parallel.
         download_task = _fetch_download_files(client, target_subject_id, se, ep)
 
-        async with httpx.AsyncClient() as web:
+        async with AsyncSession(impersonate=_IMPERSONATE) as web:
             domain_task = _resolve_play_domain(web)
-            
+
             # Wait for both initial tasks.
             download_files, domain = await asyncio.gather(download_task, domain_task)
 
@@ -358,7 +373,11 @@ async def _resolve(
             try:
                 play_data = await streams_task
                 streams = play_data.get("streams") or []
-            except httpx.HTTPError:
+            except Exception as e:
+                logger.warning(
+                    "[play] subject_id=%s fetch failed: %s",
+                    target_subject_id, e,
+                )
                 streams = []
 
             captions = await captions_task
@@ -398,6 +417,16 @@ async def _resolve(
         key=lambda q: int(str(q["resolution"]).rstrip("p")), reverse=True
     )
 
+    logger.info(
+        "[resolve] subject_id=%s play_qualities=%d download_qualities=%d "
+        "play_codecs=%s download_codecs=%s",
+        target_subject_id,
+        len(qualities),
+        len(download_qualities),
+        sorted({q.get("codec") or "?" for q in qualities}),
+        sorted({q.get("codec") or "?" for q in download_qualities}),
+    )
+
     # Coming Soon: nothing to play AND nothing to download.
     if not qualities and not download_qualities:
         return None
@@ -405,6 +434,12 @@ async def _resolve(
     # Merge play + download variants for the streaming pool, dropping HEVC.
     # download_qualities stays untouched so the Downloads UI keeps HEVC files.
     qualities = _merge_for_player(qualities, download_qualities)
+    logger.info(
+        "[resolve] subject_id=%s post_merge_qualities=%d post_merge_codecs=%s",
+        target_subject_id,
+        len(qualities),
+        sorted({q.get("codec") or "?" for q in qualities}),
+    )
 
     chosen = _select_best_stream(qualities)
     final_stream_url = chosen["url"] if chosen else None
