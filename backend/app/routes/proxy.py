@@ -97,6 +97,8 @@ async def proxy(
         if k.lower() in PASS_THROUGH_RESPONSE_HEADERS:
             response_headers[k] = v
     response_headers.setdefault("accept-ranges", "bytes")
+    # Discourage buffering on Render/Nginx to keep the stream flowing.
+    response_headers["X-Accel-Buffering"] = "no"
 
     media_type = upstream.headers.get("content-type", "application/octet-stream")
     
@@ -108,11 +110,17 @@ async def proxy(
         response_headers["Content-Disposition"] = f'attachment; filename="{safe_dl}"'
         media_type = "application/octet-stream"
     
-    # If content-type is missing or generic, try guessing from URL.
+    # If content-type is missing or generic, try guessing from URL or forcing video.
     elif media_type == "application/octet-stream" or not media_type:
         guessed, _ = mimetypes.guess_type(url)
         if guessed:
             media_type = guessed
+        elif ".mp4" in url.lower():
+            media_type = "video/mp4"
+        elif ".mkv" in url.lower():
+            media_type = "video/x-matroska"
+        elif ".m3u8" in url.lower():
+            media_type = "application/x-mpegURL"
 
     async def iter_bytes():
         try:
