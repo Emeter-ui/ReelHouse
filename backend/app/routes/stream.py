@@ -312,25 +312,22 @@ def _merge_for_player(
     play: list[dict[str, Any]], download: list[dict[str, Any]]
 ) -> list[dict[str, Any]]:
     """Combine H5 play and mobile download variants, deduping by resolution.
-    Prefer H.264 (iOS Safari can't play hev1); fall back to HEVC only when no
-    H.264 exists at any resolution, so the player has something to attempt
-    instead of showing 'Source Unavailable'. download_qualities stays
-    unfiltered so the Downloads UI keeps everything."""
-    h264: dict[str, dict[str, Any]] = {}
-    hevc: dict[str, dict[str, Any]] = {}
+    HEVC is strictly excluded — most desktop browsers can't decode H.265 video
+    (they'd play only the audio track), and iOS Safari can't decode `hev1` at
+    all. If a movie is HEVC-only upstream, the player should show 'Source
+    Unavailable' rather than serve audio-only. HEVC stays in
+    download_qualities so the Downloads UI keeps everything."""
+    by_res: dict[str, dict[str, Any]] = {}
     for q in play + download:
-        r = q.get("resolution")
-        if not r:
-            continue
         if _is_hevc(q.get("codec") or q.get("codecName"), q.get("url")):
-            if r not in hevc:
-                hevc[r] = q
-        elif r not in h264:
-            h264[r] = q
+            continue
+        r = q.get("resolution")
+        if not r or r in by_res:
+            continue
+        by_res[r] = q
 
-    chosen = h264 if h264 else hevc
     return sorted(
-        chosen.values(),
+        by_res.values(),
         key=lambda q: int(str(q["resolution"]).rstrip("p")),
         reverse=True,
     )
