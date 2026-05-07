@@ -166,7 +166,10 @@ const initPlayer = () => {
       subsCapsButton: true,
     },
     html5: {
-      vhs: { overrideNative: true },
+      vhs: { 
+        // On iOS and Safari, native HLS support is more reliable than VHS.
+        overrideNative: !videojs.browser.IS_SAFARI && !videojs.browser.IS_IOS 
+      },
     },
   })
 
@@ -247,7 +250,7 @@ onBeforeUnmount(() => {
           </p>
           <p class="text-sm text-slate-400 leading-relaxed">
             <template v-if="isProdLocalhost">
-              Frontend is trying to reach localhost:8003 from a production site. Please set NUXT_PUBLIC_API_BASE in Vercel settings.
+              Frontend is trying to reach localhost:8003 from a production site. Please set NUXT_PUBLIC_API_BASE in Netlify settings.
             </template>
             <template v-else-if="error">
               Could not reach the backend server. The request may have timed out or the server is offline.

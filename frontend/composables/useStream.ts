@@ -102,16 +102,26 @@ export function proxiedUrl(rawUrl: string, referer?: string, downloadAs?: string
  * directly or whether we must route through the backend proxy.
  */
 export async function canFetchDirect(url: string): Promise<boolean> {
+  // If the site is HTTPS, we can't fetch HTTP directly (Mixed Content).
+  if (typeof window !== 'undefined' && window.location.protocol === 'https:' && url.startsWith('http:')) {
+    return false
+  }
+
   try {
-    // Some CDNs allow HEAD requests with CORS but block GET requests.
-    // We probe with a 1-byte GET request to verify real CORS support.
+    const controller = new AbortController()
+    const timer = setTimeout(() => controller.abort(), 3000) // 3s timeout for probe
+
     const res = await fetch(url, { 
       method: 'GET', 
       mode: 'cors',
-      headers: { 'Range': 'bytes=0-0' }
+      headers: { 'Range': 'bytes=0-0' },
+      signal: controller.signal
     })
-    // 200 OK or 206 Partial Content both mean we can reach it.
-    return res.ok || res.status === 206
+    clearTimeout(timer)
+
+    // iOS requires 206 support. If we asked for a range and got 200, 
+    // it's better to proxy it so we can ensure proper range handling.
+    return res.status === 206
   } catch {
     return false
   }
