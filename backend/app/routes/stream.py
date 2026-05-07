@@ -268,9 +268,16 @@ async def _fetch_download_files(
     return found
 
 
-def _is_hevc(codec: str | None) -> bool:
+def _is_hevc(codec: str | None, url: str | None = None) -> bool:
     c = (codec or "").lower()
-    return "hevc" in c or "265" in c
+    if "hevc" in c or "265" in c:
+        return True
+    if url:
+        u = url.lower()
+        # Check for common HEVC markers in URLs
+        if "/h265/" in u or "/hevc/" in u:
+            return True
+    return False
 
 
 def _select_best_stream(streams: list[dict[str, Any]]) -> dict[str, Any] | None:
@@ -283,30 +290,24 @@ def _select_best_stream(streams: list[dict[str, Any]]) -> dict[str, Any] | None:
         except (TypeError, ValueError):
             return 0
 
-    non_hevc = [s for s in streams if not _is_hevc(s.get("codec") or s.get("codecName"))]
-    pool = non_hevc or streams
-    return max(pool, key=res)
+    return max(streams, key=res)
 
 
 def _merge_for_player(
     play: list[dict[str, Any]], download: list[dict[str, Any]]
 ) -> list[dict[str, Any]]:
-    """Combine H5 play and mobile download variants, deduping by resolution and
-    preferring non-HEVC. MovieBox's H5 play endpoint frequently returns only
-    HEVC for a given resolution while the mobile download endpoint has an
-    H.264 copy at the same resolution — Firefox and many desktops can't decode
-    HEVC, so we cross-pollinate to give the player a browser-friendly pick."""
+    """Combine H5 play and mobile download variants, deduping by resolution.
+    HEVC is strictly excluded — streaming is H.264/AVC only. HEVC stays in
+    download_qualities for the Downloads UI."""
     by_res: dict[str, dict[str, Any]] = {}
     for q in play + download:
+        if _is_hevc(q.get("codec") or q.get("codecName"), q.get("url")):
+            continue
         r = q.get("resolution")
-        if not r:
+        if not r or r in by_res:
             continue
-        existing = by_res.get(r)
-        if existing is None:
-            by_res[r] = q
-            continue
-        if _is_hevc(existing.get("codec")) and not _is_hevc(q.get("codec")):
-            by_res[r] = q
+        by_res[r] = q
+
     return sorted(
         by_res.values(),
         key=lambda q: int(str(q["resolution"]).rstrip("p")),
@@ -395,9 +396,8 @@ async def _resolve(
     if not qualities and not download_qualities:
         return None
 
-    # Merge play + download variants so the player resolution picker (and the
-    # auto-selected stream below) prefer a non-HEVC copy when one exists in
-    # *either* source. download_qualities stays untouched for the Downloads UI.
+    # Merge play + download variants for the streaming pool, dropping HEVC.
+    # download_qualities stays untouched so the Downloads UI keeps HEVC files.
     qualities = _merge_for_player(qualities, download_qualities)
 
     chosen = _select_best_stream(qualities)
