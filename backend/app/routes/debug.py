@@ -6,12 +6,15 @@ matches) before we filter it.
 """
 from __future__ import annotations
 
+import time
 from typing import Any
 
+import httpx
+from curl_cffi.requests import AsyncSession
 from fastapi import APIRouter, HTTPException, Query
 from moviebox_api.v1.constants import SubjectType
 from moviebox_api.v3.constants import ResolutionType
-from moviebox_api.v3.core import DownloadableVideoFilesDetail, Search
+from moviebox_api.v3.core import DownloadableVideoFilesDetail, ItemDetails, Search
 from moviebox_api.v3.http_client import MovieBoxHttpClient
 from moviebox_api.v3.models.downloadables import VideoFileMetadata
 from moviebox_api.v3.urls import PLAY_INFO_PATH, RESOURCE_PATH
@@ -78,6 +81,159 @@ async def fetch_all_video_files(
     return collected
 
 router = APIRouter()
+
+
+@router.get("/debug/moviebox-probe")
+async def moviebox_probe(
+    title: str = Query("Inception", description="Title to search for"),
+    year: int | None = Query(default=2010),
+) -> dict[str, Any]:
+    """Hit every MovieBox surface from the deployed backend and report which
+    succeed/fail. Used to confirm whether MovieBox is IP-blocking the host.
+
+    Returns timing + status + error per call so we can tell exactly which
+    endpoints are blocked vs working.
+    """
+    report: dict[str, Any] = {"host": "render", "checks": {}}
+
+    async def timed(label: str, coro):
+        t0 = time.monotonic()
+        try:
+            data = await coro
+            report["checks"][label] = {
+                "ok": True,
+                "ms": int((time.monotonic() - t0) * 1000),
+                "summary": data,
+            }
+            return data
+        except httpx.HTTPStatusError as exc:
+            report["checks"][label] = {
+                "ok": False,
+                "ms": int((time.monotonic() - t0) * 1000),
+                "kind": "http_status",
+                "status": exc.response.status_code,
+                "body_preview": exc.response.text[:300],
+            }
+        except Exception as exc:
+            report["checks"][label] = {
+                "ok": False,
+                "ms": int((time.monotonic() - t0) * 1000),
+                "kind": type(exc).__name__,
+                "error": str(exc)[:500],
+            }
+        return None
+
+    # 1) Plain GET to H5 domain discovery — no signing, just a vanilla request.
+    async def check_discovery():
+        async with httpx.AsyncClient(timeout=15) as c:
+            r = await c.get(
+                "https://h5-api.aoneroom.com/wefeed-h5api-bff/media-player/get-domain",
+                headers={"User-Agent": "Mozilla/5.0", "X-Client-Type": "h5"},
+            )
+            r.raise_for_status()
+            j = r.json() or {}
+            return {"play_domain": j.get("data"), "code": j.get("code")}
+
+    discovery = await timed("h5_domain_discovery", check_discovery())
+    play_domain = (discovery or {}).get("play_domain") or "https://h5.aoneroom.com"
+    play_domain = play_domain.rstrip("/")
+
+    # 2) Mobile-bff search (signed POST) — this is the most likely IP-blocked call.
+    subject_id: str | None = None
+    detail_path: str | None = None
+    async def check_search():
+        nonlocal subject_id, detail_path
+        async with MovieBoxHttpClient() as client:
+            search = Search(
+                client_session=client, query=title, subject_type=SubjectType.MOVIES
+            )
+            result = await search.get_content_model()
+            cands = []
+            for item in result.items:
+                if not item.has_resource:
+                    continue
+                yr = item.release_date.year if item.release_date else None
+                cands.append(Candidate(
+                    subject_id=item.subject_id,
+                    title=item.title,
+                    year=yr,
+                ))
+            match = best_match(title, year, cands)
+            if match:
+                subject_id = match.subject_id
+            return {
+                "items": len(result.items),
+                "candidates": len(cands),
+                "matched_subject_id": subject_id,
+                "matched_title": match.title if match else None,
+            }
+
+    await timed("mobile_search", check_search())
+
+    # 3) Mobile-bff item-details (signed GET) — same auth surface as search.
+    if subject_id:
+        async def check_details():
+            async with MovieBoxHttpClient() as client:
+                d = await ItemDetails(client_session=client).get_content_model(subject_id)
+                return {
+                    "title": d.title,
+                    "subject_id": d.subject_id,
+                    "dubs": len(d.dubs),
+                }
+        await timed("mobile_item_details", check_details())
+
+        # 4) Mobile-bff resource (signed) — what /stream uses for download_qualities.
+        async def check_resource():
+            async with MovieBoxHttpClient() as client:
+                downloads = DownloadableVideoFilesDetail(
+                    client_session=client, resolution=ResolutionType.UNSPECIFIED
+                )
+                downloads.page = 1
+                chunk = await downloads.get_content_model(subject_id=subject_id)
+                return {"file_count": len(chunk.list)}
+        await timed("mobile_resource", check_resource())
+
+    # 5) H5 /subject/play (no signing, browser-style) — same call we proved
+    #    is reachable from the browser. Tests whether the BACKEND host is
+    #    blocked even on the H5 surface.
+    if subject_id:
+        async def check_play():
+            async with AsyncSession(impersonate="chrome124") as web:
+                r = await web.get(
+                    f"{play_domain}/wefeed-h5api-bff/subject/play",
+                    params={"subjectId": subject_id, "se": 0, "ep": 0},
+                    headers={
+                        "Accept": "application/json",
+                        "Referer": f"{play_domain}/",
+                        "User-Agent": (
+                            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                            "AppleWebKit/537.36 (KHTML, like Gecko) "
+                            "Chrome/124.0.0.0 Safari/537.36"
+                        ),
+                        "X-Client-Info": '{"timezone":"Africa/Nairobi"}',
+                    },
+                    cookies={"uuid": "d8c3539e-2e46-4000-af20-7046a856e30a"},
+                    timeout=15,
+                )
+                r.raise_for_status()
+                data = (r.json() or {}).get("data") or {}
+                streams = data.get("streams") or []
+                return {
+                    "stream_count": len(streams),
+                    "resolutions": sorted({str(s.get("resolutions")) for s in streams}),
+                    "codecs": sorted({s.get("codecName") for s in streams}),
+                    "first_url_host": (
+                        streams[0]["url"].split("/")[2] if streams else None
+                    ),
+                }
+        await timed("h5_play", check_play())
+
+    # Roll up which surfaces work — makes the "what's blocked" call obvious.
+    report["summary"] = {
+        name: ("ok" if v.get("ok") else f"FAIL ({v.get('kind') or v.get('status')})")
+        for name, v in report["checks"].items()
+    }
+    return report
 
 
 @router.get("/debug/full-resource")
