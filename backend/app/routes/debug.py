@@ -236,6 +236,90 @@ async def moviebox_probe(
     return report
 
 
+@router.get("/debug/play-params")
+async def play_params(
+    title: str = Query(...),
+    year: int | None = Query(default=None),
+) -> dict[str, Any]:
+    """Return the exact params the backend would use for the H5 /subject/play
+    call — resolved subject_id (post dub-redirection) and detail_path slug.
+
+    Use to feed a browser-side test of the play endpoint with the right inputs."""
+    from urllib.parse import urlparse
+
+    def slug_from_url(url: str | None) -> str | None:
+        if not url:
+            return None
+        parts = [p for p in urlparse(url).path.split("/") if p]
+        return parts[-1] if parts else None
+
+    async with MovieBoxHttpClient() as client:
+        # Search → match
+        search = Search(
+            client_session=client, query=title, subject_type=SubjectType.MOVIES
+        )
+        result = await search.get_content_model()
+        cands: list[Candidate] = []
+        for item in result.items:
+            if not item.has_resource:
+                continue
+            yr = item.release_date.year if item.release_date else None
+            cands.append(Candidate(
+                subject_id=item.subject_id,
+                title=item.title,
+                year=yr,
+                detail_path=slug_from_url(
+                    str(item.detail_url) if item.detail_url else None
+                ),
+            ))
+        match = best_match(title, year, cands)
+        if not match:
+            return {"error": "no match"}
+
+        # Dub resolution — pick the original dub if there is one.
+        details = await ItemDetails(client_session=client).get_content_model(match.subject_id)
+        target_id = match.subject_id
+        for dub in details.dubs:
+            if dub.original:
+                target_id = dub.subject_id
+                break
+
+        # Re-fetch details on target to get its canonical detail_url slug.
+        if target_id != match.subject_id:
+            details = await ItemDetails(client_session=client).get_content_model(target_id)
+        target_slug = slug_from_url(
+            str(details.detail_url) if details.detail_url else None
+        ) or match.detail_path
+
+        # Domain discovery (same as the probe).
+        async with httpx.AsyncClient(timeout=15) as c:
+            r = await c.get(
+                "https://h5-api.aoneroom.com/wefeed-h5api-bff/media-player/get-domain",
+                headers={"User-Agent": "Mozilla/5.0", "X-Client-Type": "h5"},
+            )
+            domain = ((r.json() or {}).get("data") or "https://h5.aoneroom.com").rstrip("/")
+
+        # The Referer the backend sends — passed back so the browser test
+        # knows what context the API expects (even though browsers can't spoof it).
+        referer = (
+            f"{domain}/spa/videoPlayPage/movies/{target_slug or ''}"
+            f"?id={target_id}&type=/movie/detail&detailSe=&detailEp=&lang=en"
+        )
+        return {
+            "matched_subject_id": match.subject_id,
+            "matched_title": match.title,
+            "target_subject_id": target_id,
+            "detail_path": target_slug,
+            "play_domain": domain,
+            "expected_referer": referer,
+            "play_url_browser_should_call": (
+                f"{domain}/wefeed-h5api-bff/subject/play"
+                f"?subjectId={target_id}&se=0&ep=0"
+                + (f"&detailPath={target_slug}" if target_slug else "")
+            ),
+        }
+
+
 @router.get("/debug/full-resource")
 async def full_resource(
     subject_id: str = Query(...),
