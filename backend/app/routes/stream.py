@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 from typing import Any
 from urllib.parse import urlparse
 
@@ -28,6 +29,13 @@ logger = logging.getLogger(__name__)
 # Impersonate real Chrome's TLS fingerprint so MovieBox doesn't flag the
 # request as bot traffic from the (datacenter) backend host.
 _IMPERSONATE = "chrome124"
+
+# Cloudflare Worker that fronts the H5 play domain. MovieBox IP-blocks our
+# Render egress on this domain; Worker runs on Cloudflare IPs and forwards
+# with the Referer + uuid cookie MovieBox needs. When unset, we hit MovieBox
+# directly (works in local dev where the host isn't blocked).
+_PROXY_BASE = os.environ.get("MOVIEBOX_PROXY_URL", "").rstrip("/")
+_PROXY_SECRET = os.environ.get("MOVIEBOX_PROXY_SECRET", "")
 
 router = APIRouter()
 
@@ -152,6 +160,18 @@ async def _resolve_play_domain(client: AsyncSession) -> str:
     return _PLAY_DOMAIN_FALLBACK
 
 
+def _h5_target(domain: str, path: str) -> tuple[str, dict[str, str]]:
+    """Pick whether to call MovieBox directly or via the Cloudflare Worker.
+
+    The Worker takes the upstream host + Referer in headers and forwards with
+    the cookie MovieBox requires. Falls back to direct calls when no Worker
+    is configured (local dev)."""
+    if _PROXY_BASE:
+        host = urlparse(domain).netloc
+        return f"{_PROXY_BASE}{path}", {"X-Upstream-Host": host}
+    return f"{domain}{path}", {}
+
+
 async def _fetch_play_streams(
     domain: str,
     client: AsyncSession,
@@ -176,8 +196,15 @@ async def _fetch_play_streams(
     if detail_path:
         params["detailPath"] = detail_path
 
+    target_url, proxy_headers = _h5_target(domain, _PLAY_PATH)
+    if proxy_headers:
+        headers.update(proxy_headers)
+        headers["X-Upstream-Referer"] = referer
+        if _PROXY_SECRET:
+            headers["X-Auth"] = _PROXY_SECRET
+
     r = await client.get(
-        f"{domain}{_PLAY_PATH}",
+        target_url,
         headers=headers,
         params=params,
         cookies=_SESSION_COOKIES,
@@ -203,16 +230,25 @@ async def _fetch_captions(
     se: int,
     ep: int,
 ) -> list[dict[str, str]]:
+    referer = f"{domain}/movies/{detail_path or ''}"
     headers = {
         "Accept": "application/json",
-        "Referer": f"{domain}/movies/{detail_path or ''}",
+        "Referer": referer,
         "User-Agent": _BROWSER_UA,
         "X-Client-Info": _X_CLIENT_INFO,
     }
     params = {"subjectId": subject_id, "se": se, "ep": ep}
+
+    target_url, proxy_headers = _h5_target(domain, _DOWNLOAD_PATH)
+    if proxy_headers:
+        headers.update(proxy_headers)
+        headers["X-Upstream-Referer"] = referer
+        if _PROXY_SECRET:
+            headers["X-Auth"] = _PROXY_SECRET
+
     try:
         r = await client.get(
-            f"{domain}{_DOWNLOAD_PATH}",
+            target_url,
             headers=headers,
             params=params,
             cookies=_SESSION_COOKIES,
