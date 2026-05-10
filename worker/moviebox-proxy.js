@@ -18,10 +18,15 @@
  */
 
 const DEFAULT_UPSTREAM_HOST = 'netfilm.world';
-const UUID_COOKIE = 'uuid=d8c3539e-2e46-4000-af20-7046a856e30a';
 const BROWSER_UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
   '(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+
+// Fresh UUID per request so a single hardcoded cookie can't be blacklisted.
+function freshUuid() {
+  // crypto.randomUUID is available in Workers runtime.
+  return crypto.randomUUID();
+}
 
 export default {
   async fetch(request, env) {
@@ -46,7 +51,14 @@ export default {
       'X-Client-Info': '{"timezone":"Africa/Nairobi"}',
       'X-Source': '',
       'Referer': upstreamReferer,
-      'Cookie': UUID_COOKIE,
+      'Cookie': `uuid=${freshUuid()}`,
+      // Mimic what a real browser would send when navigating from netfilm.world.
+      'Sec-Fetch-Site': 'same-origin',
+      'Sec-Fetch-Mode': 'cors',
+      'Sec-Fetch-Dest': 'empty',
+      'Sec-Ch-Ua': '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+      'Sec-Ch-Ua-Mobile': '?0',
+      'Sec-Ch-Ua-Platform': '"Windows"',
     };
 
     const upstream = await fetch(upstreamUrl, {
@@ -54,6 +66,12 @@ export default {
       headers,
       body: request.method === 'GET' || request.method === 'HEAD' ? undefined : request.body,
     });
+
+    // For non-2xx, log the response body so we can see WHY MovieBox refused.
+    if (upstream.status >= 400) {
+      const bodyText = await upstream.clone().text().catch(() => '<unreadable>');
+      console.log(`UPSTREAM ${upstream.status} body=${bodyText.slice(0, 500)}`);
+    }
 
     const respHeaders = new Headers(upstream.headers);
     // CF auto-decodes; the original encoding header would be wrong for the body we pass through.
