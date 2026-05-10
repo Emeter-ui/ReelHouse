@@ -21,6 +21,7 @@ from moviebox_api.v3.core import DownloadableVideoFilesDetail, ItemDetails, Sear
 from moviebox_api.v3.http_client import MovieBoxHttpClient
 from moviebox_api.v3.models.downloadables import VideoFileMetadata
 
+from .. import fzmovies
 from ..cache import TTLCache
 from ..matching import Candidate, best_match
 
@@ -474,10 +475,24 @@ async def _resolve(
         sorted({q.get("codec") or "?" for q in qualities}),
     )
 
+    # HEVC-only fallback: if MovieBox left us with nothing playable for the
+    # browser (every variant was h265), try fzmovies for a 480p h264 mp4.
+    # Movies only — fzmovies-api doesn't model series.
+    stream_source = "moviebox"
+    if not qualities and se == 0 and ep == 0 and title:
+        fzm = await fzmovies.resolve_h264(title, year)
+        if fzm:
+            qualities = [fzm]
+            stream_source = "fzmovies"
+
     chosen = _select_best_stream(qualities)
     final_stream_url = chosen["url"] if chosen else None
     final_codec = (chosen.get("codec") if chosen else "") or ""
     final_format = (chosen.get("format") if chosen else "") or ""
+
+    # Referer is MovieBox-CDN-specific. fzmovies' final URL doesn't enforce
+    # one (we tested), so leave it empty when streaming from fzmovies.
+    play_referer = "" if stream_source == "fzmovies" else domain.rstrip("/") + "/"
 
     return {
         "stream_url": final_stream_url,
@@ -485,11 +500,11 @@ async def _resolve(
         "stream_format": final_format,
         # CDN does Referer-allowlisting against MovieBox's current play domain.
         # The browser can't spoof Referer, so the proxy needs this to fetch bytes.
-        "play_referer": domain.rstrip("/") + "/",
+        "play_referer": play_referer,
         "qualities": qualities,
         "download_qualities": download_qualities,
         "captions": captions,
-        "source": "moviebox",
+        "source": stream_source,
     }
 
 
