@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "app.vercel.reel_house_mocha.twa",
+      "sha256_cert_fingerprints": [
+        "D1:DA:1A:33:05:DC:29:D9:90:E1:21:C3:5F:EE:0D:06:DE:1A:60:BA:64:24:02:2F:D8:6F:D0:37:B4:81:D5:7C"
+      ]
+    }
+  }
+]
