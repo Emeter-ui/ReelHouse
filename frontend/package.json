@@ -25,8 +25,10 @@
   "devDependencies": {
     "@nuxt/types": "^2.18.1",
     "@nuxtjs/tailwindcss": "^6.12.2",
+    "@vite-pwa/nuxt": "^1.1.1",
     "autoprefixer": "^10.4.20",
     "postcss": "^8.4.49",
+    "sharp": "^0.34.5",
     "tailwindcss": "^3.4.15",
     "typescript": "^5.6.3",
     "vue-tsc": "^2.1.10"
