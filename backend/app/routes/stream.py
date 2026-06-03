@@ -48,6 +48,19 @@ router = APIRouter()
 # upstream signature expires.
 _cache = TTLCache(maxsize=512, ttl_seconds=3 * 60)
 
+# Full per-subject file set. The resource endpoint ignores se/ep filters, so we
+# must pull every page to resolve one episode — caching it per subject means a
+# series' episodes (and the structure endpoint, which warms this on page load)
+# share one fetch instead of re-paging on every click. Holds signed download
+# URLs, so kept as short-lived as the play-URL cache above.
+_all_files_cache = TTLCache(maxsize=256, ttl_seconds=3 * 60)
+# Pages fetched concurrently per subject — fast without hammering MovieBox.
+_MAX_PAGE_CONCURRENCY = 6
+
+# title→subject match is stable; cache it so the structure call and the
+# subsequent play/download resolve don't both repeat search + item-details.
+_match_cache = TTLCache(maxsize=1024, ttl_seconds=3600)
+
 # TMDB/AniList alt titles change rarely; cache for a day to cap fallback latency.
 _alt_titles_cache = TTLCache(maxsize=2048, ttl_seconds=24 * 3600)
 _http_client: httpx.AsyncClient | None = None
@@ -251,6 +264,30 @@ async def _iter_titles_with_alts(
         yield alt
 
 
+async def _match_query(
+    client: MovieBoxHttpClient,
+    query: str,
+    year: int | None,
+    subject_type: SubjectType,
+) -> tuple[str, str | None] | None:
+    """Search MovieBox for `query`, pick the best match, and resolve the dub
+    redirect — returning (target_subject_id, detail_path). Positive results are
+    cached (title→subject is stable) so repeated lookups for the same title skip
+    the search + item-details round-trips. Negative results aren't cached (so
+    alt-title retries still happen)."""
+    ck = f"{int(subject_type)}:{query.casefold()}:{year or ''}"
+    cached = _match_cache.get(ck)
+    if cached is not None:
+        return cached
+    candidates = await _search_candidates(client, query, subject_type)
+    match = best_match(query, year, candidates)
+    if match is None:
+        return None
+    target = await _resolve_target(client, match.subject_id, match.detail_path)
+    _match_cache.set(ck, target)
+    return target
+
+
 async def _match_target_subject(
     client: MovieBoxHttpClient,
     title: str,
@@ -270,12 +307,16 @@ async def _match_target_subject(
     async for query in _iter_titles_with_alts(
         title, tmdb_id=tmdb_id, anilist_id=anilist_id, is_series=is_series
     ):
-        candidates = await _search_candidates(client, query, subject_type)
-        match = best_match(query, year, candidates)
-        if match is None:
-            continue
-        return await _resolve_target(client, match.subject_id, match.detail_path)
+        target = await _match_query(client, query, year, subject_type)
+        if target is not None:
+            return target
     return None
+
+
+async def _empty_meta() -> list[dict[str, Any]]:
+    """Awaitable empty episode-meta list — lets the structure endpoint gather
+    the TMDB fetch unconditionally even when there's no tmdb_id (anime)."""
+    return []
 
 
 async def _fetch_tmdb_episode_meta(tmdb_id: int) -> list[dict[str, Any]]:
@@ -299,14 +340,20 @@ async def _fetch_tmdb_episode_meta(tmdb_id: int) -> list[dict[str, Any]]:
         for s in (data.get("seasons") or [])
         if (s.get("season_number") or 0) > 0
     )
-    out: list[dict[str, Any]] = []
-    for sn in season_nums:
+
+    async def fetch_season(sn: int) -> list[dict[str, Any]]:
         try:
             r = await client.get(f"{base}/tv/{tmdb_id}/season/{sn}", params=params)
             r.raise_for_status()
-            eps = (r.json() or {}).get("episodes") or []
+            return (r.json() or {}).get("episodes") or []
         except Exception:
-            continue
+            return []
+
+    # Seasons are independent — fetch them concurrently. gather preserves order,
+    # so the flattened list stays in season → episode order.
+    season_eps = await asyncio.gather(*(fetch_season(sn) for sn in season_nums))
+    out: list[dict[str, Any]] = []
+    for eps in season_eps:
         for e in sorted(eps, key=lambda e: e.get("episode_number") or 0):
             out.append(
                 {
@@ -581,30 +628,70 @@ async def _fetch_all_video_files(
     *,
     max_pages: int = 20,
 ) -> list[VideoFileMetadata]:
-    """Page MovieBox's mobile resource endpoint and return EVERY file for a
-    subject (all seasons / episodes / resolutions). The caller filters for the
-    requested (season, episode) — we need the full set both to satisfy the
-    filter and to drive the cours/season remap in `_remap_global_episode`."""
-    found: list[VideoFileMetadata] = []
-    # Dedup on logical identity, NOT the signed URL — MovieBox re-signs on
-    # every call so the URL differs across the two passes for the same file.
-    seen: set[tuple[int | None, int | None, int | None, str | None]] = set()
+    """Return EVERY file for a subject (all seasons / episodes / resolutions).
+
+    The resource endpoint ignores se/ep filters, so the caller can only filter
+    in memory — we need the full set both to satisfy that filter and to drive
+    the cours/season remap. Pulling it sequentially is the dominant cost on a
+    Play/Download click (~9s for a 220-episode series), so this:
+      * serves a per-subject cache when warm (episodes of one series, plus the
+        structure endpoint, share a single fetch);
+      * fetches page 1 of each pass to learn the page count, then pulls the
+        remaining pages with bounded concurrency;
+      * runs the two passes (BEST archive + UNSPECIFIED low tier) together."""
+    cached = _all_files_cache.get(subject_id)
+    if cached is not None:
+        return cached
+
+    sem = asyncio.Semaphore(_MAX_PAGE_CONCURRENCY)
+
+    async def fetch_page(res, page):
+        async with sem:
+            downloads = (
+                DownloadableVideoFilesDetail(client_session=client)
+                if res is None
+                else DownloadableVideoFilesDetail(
+                    client_session=client, resolution=res
+                )
+            )
+            downloads.page = page
+            try:
+                return await downloads.get_content_model(subject_id=subject_id)
+            except Exception:
+                return None
+
+    async def run_pass(res):
+        first = await fetch_page(res, 1)
+        if first is None:
+            return []
+        chunks = [first]
+        pager = first.pager
+        if pager.has_more:
+            if pager.total_count and pager.per_page:
+                total_pages = (pager.total_count + pager.per_page - 1) // pager.per_page
+            else:
+                total_pages = max_pages
+            total_pages = min(total_pages, max_pages)
+            if total_pages > 1:
+                rest = await asyncio.gather(
+                    *(fetch_page(res, p) for p in range(2, total_pages + 1))
+                )
+                chunks.extend(c for c in rest if c is not None)
+        return chunks
 
     # Two passes pick up both the high-quality archive (default resolution)
     # and any low-quality-only episodes the BEST pass would otherwise drop.
-    for res in (None, ResolutionType.UNSPECIFIED):
-        downloads = (
-            DownloadableVideoFilesDetail(client_session=client)
-            if res is None
-            else DownloadableVideoFilesDetail(client_session=client, resolution=res)
-        )
-        page = 1
-        while page <= max_pages:
-            downloads.page = page
-            try:
-                chunk = await downloads.get_content_model(subject_id=subject_id)
-            except Exception:
-                break
+    pass_results = await asyncio.gather(
+        run_pass(None), run_pass(ResolutionType.UNSPECIFIED)
+    )
+
+    found: list[VideoFileMetadata] = []
+    # Dedup on logical identity, NOT the signed URL — MovieBox re-signs on every
+    # call so the URL differs across passes for the same file. BEST pass first
+    # so its high-quality archive wins over the UNSPECIFIED low tier.
+    seen: set[tuple[int | None, int | None, int | None, str | None]] = set()
+    for chunks in pass_results:
+        for chunk in chunks:
             for v in chunk.list:
                 key = (
                     v.season,
@@ -616,12 +703,8 @@ async def _fetch_all_video_files(
                     continue
                 seen.add(key)
                 found.append(v)
-            if not chunk.pager.has_more:
-                break
-            next_page = chunk.pager.next_page or (page + 1)
-            if next_page <= page:
-                break
-            page = next_page
+
+    _all_files_cache.set(subject_id, found)
     return found
 
 
@@ -778,13 +861,10 @@ async def _resolve(
 ) -> dict[str, Any] | None:
     se, ep = season or 0, episode or 0
     async with make_client() as client:
-        candidates = await _search_candidates(client, title, subject_type)
-        match = best_match(title, year, candidates)
-        if match is None:
+        target = await _match_query(client, title, year, subject_type)
+        if target is None:
             return None
-        target_subject_id, detail_path = await _resolve_target(
-            client, match.subject_id, match.detail_path
-        )
+        target_subject_id, detail_path = target
 
         # Kick off mobile download lookup (all files) and domain discovery
         # in parallel. We fetch the full file set so we can both filter for
@@ -825,26 +905,34 @@ async def _resolve(
                         target_subject_id, se, ep, eff_se, eff_ep,
                     )
 
-            # Now fetch play streams and captions in parallel using the
-            # (possibly remapped) effective (se, ep).
-            streams_task = _fetch_play_streams(
-                domain, web, target_subject_id, detail_path, eff_se, eff_ep
-            )
-            captions_task = _fetch_captions(
-                domain, web, target_subject_id, detail_path, eff_se, eff_ep
+            # Now fetch play streams and captions concurrently using the
+            # (possibly remapped) effective (se, ep). Captions failing must not
+            # sink the whole resolve, so gather with return_exceptions.
+            play_data, captions = await asyncio.gather(
+                _fetch_play_streams(
+                    domain, web, target_subject_id, detail_path, eff_se, eff_ep
+                ),
+                _fetch_captions(
+                    domain, web, target_subject_id, detail_path, eff_se, eff_ep
+                ),
+                return_exceptions=True,
             )
 
-            try:
-                play_data = await streams_task
-                streams = play_data.get("streams") or []
-            except Exception as e:
+            if isinstance(play_data, BaseException):
                 logger.warning(
                     "[play] subject_id=%s fetch failed: %s",
-                    target_subject_id, e,
+                    target_subject_id, play_data,
                 )
                 streams = []
+            else:
+                streams = play_data.get("streams") or []
 
-            captions = await captions_task
+            if isinstance(captions, BaseException):
+                logger.warning(
+                    "[captions] subject_id=%s fetch failed: %s",
+                    target_subject_id, captions,
+                )
+                captions = []
 
     qualities: list[dict[str, Any]] = []
     for s in streams:
@@ -1019,15 +1107,27 @@ async def series_structure(
     if cached is not None:
         return cached
 
-    async with make_client() as client:
-        matched = await _match_target_subject(
-            client, title, year, SubjectType.TV_SERIES,
-            tmdb_id=tmdb_id, anilist_id=anilist_id,
-        )
-        if matched is None:
-            raise HTTPException(status_code=404, detail={"error": "unavailable"})
-        target_subject_id, _ = matched
-        all_files = await _fetch_all_video_files(client, target_subject_id)
+    async def _moviebox_files() -> tuple[str, list[VideoFileMetadata]] | None:
+        async with make_client() as client:
+            matched = await _match_target_subject(
+                client, title, year, SubjectType.TV_SERIES,
+                tmdb_id=tmdb_id, anilist_id=anilist_id,
+            )
+            if matched is None:
+                return None
+            sid, _ = matched
+            return sid, await _fetch_all_video_files(client, sid)
+
+    # The MovieBox lookup and the TMDB episode fetch are independent (TMDB only
+    # needs tmdb_id) — run them concurrently. AniList per-episode titles are
+    # unreliable, so anime gets correct numbering with "Episode N" names.
+    files_result, ep_meta = await asyncio.gather(
+        _moviebox_files(),
+        _fetch_tmdb_episode_meta(tmdb_id) if tmdb_id else _empty_meta(),
+    )
+    if files_result is None:
+        raise HTTPException(status_code=404, detail={"error": "unavailable"})
+    target_subject_id, all_files = files_result
 
     season_map: dict[int, list[int]] = {}
     for f in all_files:
@@ -1038,10 +1138,6 @@ async def series_structure(
             eps.append(f.episode)
     if not season_map:
         raise HTTPException(status_code=404, detail={"error": "no_episodes"})
-
-    # AniList per-episode titles are unreliable; for anime we still deliver the
-    # correct MovieBox numbering and let names fall back to "Episode N".
-    ep_meta = await _fetch_tmdb_episode_meta(tmdb_id) if tmdb_id else []
 
     result = {
         "subject_id": target_subject_id,
