@@ -1,0 +1,6 @@
+node_modules
+.env
+.venv
+.nuxt
+__pycache__
+.DS_Store

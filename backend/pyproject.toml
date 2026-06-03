@@ -1,0 +1,26 @@
+[project]
+name = "reelhouse-backend"
+version = "0.1.0"
+description = "FastAPI backend for Reelhouse — proxies TMDB metadata and resolves stream URLs via moviebox-api."
+requires-python = ">=3.12"
+dependencies = [
+  "fastapi>=0.115.0",
+  "uvicorn[standard]>=0.32.0",
+  "httpx>=0.28.0",
+  "curl_cffi>=0.7.0",
+  "rapidfuzz>=3.10.0",
+  "python-dotenv>=1.0.1",
+  "moviebox-api",
+  # Vendored fzmovies_api (in repo) needs these at runtime.
+  "requests>=2.32.3",
+  "beautifulsoup4>=4.12.0",
+  "tqdm>=4.66.0",
+]
+
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["app", "fzmovies_api"]

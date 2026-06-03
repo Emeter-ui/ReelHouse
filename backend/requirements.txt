@@ -1,0 +1,11 @@
+fastapi>=0.115.0
+uvicorn[standard]>=0.32.0
+httpx>=0.28.0
+curl_cffi>=0.7.0
+python-dotenv>=1.0.1
+rapidfuzz>=3.10.0
+moviebox-api>=0.5.3
+# Vendored fzmovies_api (in backend/fzmovies_api/) needs these at runtime.
+requests>=2.32.3
+beautifulsoup4>=4.12.0
+tqdm>=4.66.0
