@@ -25,7 +25,10 @@ export default defineNuxtConfig({
       start_url: '/',
       scope: '/',
       display: 'standalone',
-      orientation: 'portrait',
+      // 'any' (not 'portrait') so the video player can lock landscape on
+      // fullscreen — a portrait lock here would pin the whole TWA activity
+      // to portrait and block that.
+      orientation: 'any',
       background_color: '#020617',
       theme_color: '#020617',
       categories: ['entertainment', 'video'],

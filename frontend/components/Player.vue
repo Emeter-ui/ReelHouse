@@ -183,6 +183,24 @@ const initPlayer = () => {
 
   player.on('timeupdate', upsertProgress)
 
+  // On mobile, force landscape while the video is fullscreen and restore the
+  // natural orientation on exit. Uses the Screen Orientation API, which only
+  // works while a fullscreen element is active; iOS Safari lacks lock(), so
+  // the optional-chaining makes this a no-op there.
+  player.on('fullscreenchange', () => {
+    const orientation = screen.orientation as ScreenOrientation & {
+      lock?: (o: OrientationLockType) => Promise<void>
+    }
+    if (!orientation?.lock) return
+    if (player?.isFullscreen()) {
+      orientation.lock('landscape').catch(() => {
+        /* rejected on desktop / unsupported — ignore */
+      })
+    } else {
+      orientation.unlock?.()
+    }
+  })
+
   player.on('error', () => {
     const err = player?.error()
     const codeMap: Record<number, string> = {
@@ -212,6 +230,8 @@ onMounted(() => initPlayer())
 
 onBeforeUnmount(() => {
   cw.flush()
+  // Release any landscape lock so non-player pages rotate freely again.
+  ;(screen.orientation as ScreenOrientation & { unlock?: () => void })?.unlock?.()
   if (player) {
     player.dispose()
     player = null
