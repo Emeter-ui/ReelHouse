@@ -74,6 +74,7 @@ const links = [
   { to: '/anime', label: 'Anime' },
   { to: '/collection', label: 'Collections' },
   { to: '/my-list', label: 'My List' },
+  { to: '/history', label: 'Watch History' },
 ]
 
 const submitSearch = () => {
@@ -115,7 +116,7 @@ const isActive = (to: string) =>
   <header
     class="sticky top-0 z-50 transition-all duration-300"
     :class="[
-      menuOpen || searchOpen ? 'bg-ink-950' : 'backdrop-blur-md bg-ink-950/80 border-b border-white/5'
+      menuOpen || searchOpen ? 'bg-ink-950' : 'backdrop-blur-xl bg-ink-950/75 border-b border-white/10 shadow-sm'
     ]"
   >
     <div class="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center gap-4 sm:gap-8">
@@ -143,11 +144,11 @@ const isActive = (to: string) =>
           v-for="l in links"
           :key="l.to"
           :to="l.to"
-          class="px-4 py-2 rounded-lg text-sm font-medium transition-all"
+          class="px-4 py-2 rounded-full text-sm font-semibold tracking-wide transition-all duration-200"
           :class="
             isActive(l.to)
-              ? 'bg-white/10 text-white shadow-sm ring-1 ring-white/10'
-              : 'text-slate-400 hover:text-white hover:bg-white/5'
+              ? 'bg-white/10 text-white shadow-sm ring-1 ring-white/20'
+              : 'text-slate-300 hover:text-white hover:bg-white/10'
           "
         >
           {{ l.label }}
@@ -161,7 +162,10 @@ const isActive = (to: string) =>
           @submit.prevent="submitSearch"
         >
           <div class="absolute inset-y-0 left-3 flex items-center pointer-events-none text-slate-500 group-focus-within:text-accent transition-colors">
-            <span class="text-sm">🔍</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
           </div>
           <input
             v-model="q"
@@ -242,7 +246,14 @@ const isActive = (to: string) =>
           class="sm:hidden w-10 h-10 flex items-center justify-center rounded-full text-slate-300 hover:text-white transition-colors"
           @click="searchOpen = !searchOpen"
         >
-          <span class="text-xl">{{ searchOpen ? '✕' : '🔍' }}</span>
+          <svg v-if="searchOpen" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+          <svg v-else xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
         </button>
       </div>
     </div>

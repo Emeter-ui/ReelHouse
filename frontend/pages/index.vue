@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useTmdb } from '~/composables/useTmdb'
-import { useContinueWatching } from '~/composables/useContinueWatching'
+
 useHead({ title: 'Reelhouse — Home' })
 
 type TmdbItem = {
@@ -30,25 +30,14 @@ const seriesTabs = [
   { key: 'on_the_air', label: 'On TV', path: 'tv/on_the_air' },
 ]
 
-const cw = useContinueWatching()
+
 </script>
 
 <template>
   <div class="pb-20">
     <Hero :items="heroItems" class="mb-8" />
 
-    <MovieRow
-      v-if="cw.items.value.length"
-      title="Continue Watching"
-      :items="cw.items.value.map((i) => ({
-        id: i.id,
-        title: i.title,
-        poster_path: i.poster,
-        backdrop_path: null,
-        vote_average: 0,
-        media_type: i.type === 'series' ? 'tv' : 'movie',
-      }))"
-    />
+
 
     <MovieRow title="Trending This Week" :items="trending?.results ?? []" />
     <MovieRow title="Movies" type="movie" :tabs="movieTabs" />

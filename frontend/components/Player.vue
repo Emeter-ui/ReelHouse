@@ -3,6 +3,7 @@ import videojs from 'video.js'
 import 'video.js/dist/video-js.css'
 import { canFetchDirect, captionsUrl, proxiedUrl, type StreamResolveResponse } from '~/composables/useStream'
 import { useContinueWatching } from '~/composables/useContinueWatching'
+import { useWatchHistory } from '~/composables/useWatchHistory'
 
 type VjsPlayer = ReturnType<typeof videojs>
 
@@ -23,6 +24,7 @@ type Props = {
 const props = defineProps<Props>()
 
 const cw = useContinueWatching()
+const wh = useWatchHistory()
 const videoElement = ref<HTMLVideoElement | null>(null)
 const finalSrc = ref<string | null>(null)
 const probeStatus = ref<'idle' | 'probing' | 'direct' | 'proxied' | 'failed'>('idle')
@@ -99,20 +101,41 @@ const previous = computed(() =>
 )
 let cwRestored = false
 
+const identity = () => ({
+  id: props.contentId,
+  type: props.contentType,
+  title: props.contentTitle,
+  poster: props.contentPoster,
+  season: props.season,
+  episode: props.episode,
+})
+
 const upsertProgress = () => {
   if (!player) return
   const cur = player.currentTime() ?? 0
   const dur = player.duration() ?? 0
   if (!dur || isNaN(dur)) return
   cw.upsert({
-    id: props.contentId,
-    type: props.contentType,
-    title: props.contentTitle,
-    poster: props.contentPoster,
-    season: props.season,
-    episode: props.episode,
+    ...identity(),
     position: Math.floor(cur),
     duration: Math.floor(dur),
+  })
+  // Watch History keeps a permanent log of progress (incl. finished titles).
+  wh.record({
+    ...identity(),
+    position: Math.floor(cur),
+    duration: Math.floor(dur),
+  })
+}
+
+// Log the title in Watch History the instant playback begins, so it shows up
+// even if the viewer only watches a few seconds.
+const recordHistoryStart = () => {
+  if (!player) return
+  wh.record({
+    ...identity(),
+    position: Math.floor(player.currentTime() ?? 0),
+    duration: Math.floor(player.duration() || 0),
   })
 }
 
@@ -182,6 +205,7 @@ const initPlayer = () => {
   })
 
   player.on('timeupdate', upsertProgress)
+  player.on('play', recordHistoryStart)
 
   // On mobile, force landscape while the video is fullscreen and restore the
   // natural orientation on exit. Uses the Screen Orientation API, which only
@@ -189,7 +213,7 @@ const initPlayer = () => {
   // the optional-chaining makes this a no-op there.
   player.on('fullscreenchange', () => {
     const orientation = screen.orientation as ScreenOrientation & {
-      lock?: (o: OrientationLockType) => Promise<void>
+      lock?: (o: 'portrait' | 'landscape') => Promise<void>
     }
     if (!orientation?.lock) return
     if (player?.isFullscreen()) {
@@ -230,6 +254,7 @@ onMounted(() => initPlayer())
 
 onBeforeUnmount(() => {
   cw.flush()
+  wh.flush()
   // Release any landscape lock so non-player pages rotate freely again.
   ;(screen.orientation as ScreenOrientation & { unlock?: () => void })?.unlock?.()
   if (player) {
