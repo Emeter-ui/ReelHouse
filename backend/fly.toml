@@ -1,0 +1,27 @@
+# Fly config for the Reelhouse FastAPI backend.
+# Deployed from the backend/ directory: `fly deploy` (run inside backend/).
+
+app = 'reelhouse-backend'
+primary_region = 'sin'
+
+[build]
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # Keep one machine always running -> no cold start.
+  auto_stop_machines = 'off'
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    interval = '30s'
+    timeout = '5s'
+    grace_period = '10s'
+    method = 'GET'
+    path = '/api/healthz'
+
+[[vm]]
+  memory = '512mb'
+  cpus = 1
+  memory_mb = 512

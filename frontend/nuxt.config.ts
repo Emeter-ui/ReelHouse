@@ -106,7 +106,7 @@ export default defineNuxtConfig({
       // Default points at the deployed FastAPI backend so Netlify/Vercel
       // builds work without per-platform env vars. Local dev sets
       // NUXT_PUBLIC_API_BASE=http://localhost:8003 in frontend/.env.
-      apiBase: 'https://reelhouse-v1ia.onrender.com',
+      apiBase: 'https://reelhouse-backend.fly.dev',
       tmdbImageBase: 'https://image.tmdb.org/t/p',
     },
   },
