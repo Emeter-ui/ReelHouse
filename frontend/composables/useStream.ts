@@ -23,6 +23,72 @@ export interface StreamResolveResponse {
   source: string
 }
 
+/** Numeric height from a "1080p"-style label, or 0 if unparseable. */
+export function streamHeight(resolution: string | undefined): number {
+  const m = /(\d+)/.exec(resolution ?? '')
+  return m ? Number(m[1]) : 0
+}
+
+/**
+ * Whether a codec is safe to play (and auto-switch into) in a generic browser.
+ * MovieBox's lower rungs are frequently HEVC/H.265, which throws decode-error 3
+ * on engines without HEVC support — so those must never be picked automatically.
+ * Unknown/empty codec is treated as playable (let the browser try).
+ */
+export function isPlayableCodec(codec?: string): boolean {
+  const c = (codec ?? '').toLowerCase()
+  if (!c) return true
+  return c.includes('h264') || c.includes('avc')
+}
+
+export interface NetworkHint {
+  effectiveType?: string
+  saveData?: boolean
+  downlink?: number
+}
+
+/** Read the Network Information API hint (absent on Safari/Firefox → {}). */
+export function readNetworkHint(): NetworkHint {
+  if (typeof navigator === 'undefined') return {}
+  const nav = navigator as Navigator & {
+    connection?: NetworkHint
+    mozConnection?: NetworkHint
+    webkitConnection?: NetworkHint
+  }
+  const c = nav.connection || nav.mozConnection || nav.webkitConnection
+  if (!c) return {}
+  return { effectiveType: c.effectiveType, saveData: c.saveData, downlink: c.downlink }
+}
+
+/**
+ * Pick a starting resolution from a high→low sorted ladder based on the current
+ * network. Returns null for an empty ladder. With no hint available (Safari,
+ * Firefox) we assume a good connection and return the best rung.
+ */
+export function pickConnectionAwareResolution(
+  ladder: StreamOption[],
+  hint: NetworkHint = readNetworkHint(),
+): string | null {
+  if (!ladder.length) return null
+  const highest = ladder[0].resolution
+  const lowest = ladder[ladder.length - 1].resolution
+  if (hint.saveData) return lowest
+  switch (hint.effectiveType) {
+    case 'slow-2g':
+    case '2g':
+      return lowest
+    case '3g': {
+      // Highest rung at or below 480p (ladder is sorted high→low, so the first
+      // match is the highest); fall back to the lowest rung if none qualify.
+      const cap = ladder.find((q) => streamHeight(q.resolution) <= 480)
+      return (cap ?? ladder[ladder.length - 1]).resolution
+    }
+    default:
+      // 4g or unknown — assume the best rung is sustainable.
+      return highest
+  }
+}
+
 type R<T> = T | Ref<T> | (() => T)
 function unwrap<T>(v: R<T>): T {
   if (typeof v === 'function') return (v as () => T)()

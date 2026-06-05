@@ -1,7 +1,16 @@
 <script setup lang="ts">
 import videojs from 'video.js'
 import 'video.js/dist/video-js.css'
-import { canFetchDirect, captionsUrl, proxiedUrl, type StreamResolveResponse } from '~/composables/useStream'
+import {
+  canFetchDirect,
+  captionsUrl,
+  proxiedUrl,
+  isPlayableCodec,
+  streamHeight,
+  pickConnectionAwareResolution,
+  type StreamResolveResponse,
+  type StreamOption,
+} from '~/composables/useStream'
 import { useContinueWatching } from '~/composables/useContinueWatching'
 import { useWatchHistory } from '~/composables/useWatchHistory'
 
@@ -39,20 +48,126 @@ let player: VjsPlayer | null = null
 let remoteTracks: HTMLTrackElement[] = []
 const reloadPage = () => location.reload()
 
-// Pick the active stream from qualities[] when a preferredResolution is set;
-// otherwise fall back to the server-chosen stream_url.
+// --- Quality selection -------------------------------------------------------
+// Streams are progressive MP4 (no HLS/ABR), so we do the switching ourselves:
+// pick a connection-aware default, let the viewer override, and step down
+// automatically when the network stalls. The downgrade ladder is limited to
+// browser-playable (H.264) rungs — auto-switching into an HEVC rung would just
+// black-screen on engines without HEVC decode.
+const allQualities = computed<StreamOption[]>(() =>
+  [...(props.resolved?.qualities ?? [])].sort(
+    (a, b) => streamHeight(b.resolution) - streamHeight(a.resolution),
+  ),
+)
+const ladder = computed(() => allQualities.value.filter((q) => isPlayableCodec(q.codec)))
+const riskyQualities = computed(() => allQualities.value.filter((q) => !isPlayableCodec(q.codec)))
+
+// 'auto' = connection default + auto-downgrade; 'pinned' = a viewer-chosen rung.
+const mode = ref<'auto' | 'pinned'>('auto')
+const autoResolution = ref<string | null>(null)
+const pinnedResolution = ref<string | null>(null)
+// Position to restore after a quality swap reloads the <video> source.
+let pendingSeek: number | null = null
+
+const currentResolution = computed(() =>
+  mode.value === 'pinned' ? pinnedResolution.value : autoResolution.value,
+)
+
+// (Re)derive the auto default whenever the ladder changes (new title/episode).
+// A preferredResolution prop (URL ?q=) pins that rung up front if it exists.
+watch(
+  ladder,
+  (list) => {
+    if (!list.length) {
+      autoResolution.value = null
+      return
+    }
+    const wanted = props.preferredResolution
+    if (wanted && list.some((q) => q.resolution === wanted)) {
+      mode.value = 'pinned'
+      pinnedResolution.value = wanted
+    }
+    if (!autoResolution.value || !list.some((q) => q.resolution === autoResolution.value)) {
+      autoResolution.value = pickConnectionAwareResolution(list)
+    }
+  },
+  { immediate: true },
+)
+
+// Picks from the full list (incl. HEVC) so a manual pin can select any rung,
+// but the auto default/downgrade only ever names rungs from `ladder`.
 const activeQuality = computed(() => {
-  const list = props.resolved?.qualities ?? []
-  const wanted = props.preferredResolution
-  if (wanted) {
-    const hit = list.find((q) => q.resolution === wanted)
-    if (hit) return hit
-  }
-  return null
+  const res = currentResolution.value
+  return (res && allQualities.value.find((q) => q.resolution === res)) || null
 })
 const activeStreamUrl = computed(
   () => activeQuality.value?.url ?? props.resolved?.stream_url ?? null,
 )
+
+// --- Quality picker UI + auto-downgrade -------------------------------------
+const showQualityMenu = ref(false)
+const downgradeNotice = ref<string | null>(null)
+let downgradeNoticeTimer: ReturnType<typeof setTimeout> | null = null
+let stallTimer: ReturnType<typeof setTimeout> | null = null
+let recentStalls: number[] = []
+const STALL_TIMEOUT_MS = 6000
+
+const qualityLabel = computed(() => {
+  if (mode.value === 'pinned') return pinnedResolution.value ?? '—'
+  return autoResolution.value ? `Auto · ${autoResolution.value}` : 'Auto'
+})
+
+const prettySize = (bytes?: number) => {
+  if (!bytes) return ''
+  const gb = bytes / 1e9
+  return gb >= 1 ? `${gb.toFixed(1)} GB` : `${Math.round(bytes / 1e6)} MB`
+}
+
+const clearStallTimer = () => {
+  if (stallTimer) {
+    clearTimeout(stallTimer)
+    stallTimer = null
+  }
+}
+
+const flashNotice = (msg: string) => {
+  downgradeNotice.value = msg
+  if (downgradeNoticeTimer) clearTimeout(downgradeNoticeTimer)
+  downgradeNoticeTimer = setTimeout(() => {
+    downgradeNotice.value = null
+  }, 4000)
+}
+
+// Step down one playable rung. No-op when paused at the lowest rung or when the
+// viewer has pinned a quality (their choice wins over auto-downgrade).
+const autoDowngrade = () => {
+  if (mode.value !== 'auto') return
+  clearStallTimer()
+  const list = ladder.value
+  const idx = list.findIndex((q) => q.resolution === autoResolution.value)
+  if (idx === -1 || idx >= list.length - 1) return
+  const next = list[idx + 1]
+  if (player) pendingSeek = player.currentTime() ?? 0
+  autoResolution.value = next.resolution
+  recentStalls = []
+  flashNotice(`Slow network — switched to ${next.resolution}`)
+}
+
+const selectQuality = (resolution: string) => {
+  if (player) pendingSeek = player.currentTime() ?? 0
+  mode.value = 'pinned'
+  pinnedResolution.value = resolution
+  showQualityMenu.value = false
+}
+
+const selectAuto = () => {
+  if (player) pendingSeek = player.currentTime() ?? 0
+  mode.value = 'auto'
+  if (!autoResolution.value || !ladder.value.some((q) => q.resolution === autoResolution.value)) {
+    autoResolution.value = pickConnectionAwareResolution(ladder.value)
+  }
+  showQualityMenu.value = false
+}
 
 // MovieBox's H5 play endpoint serves H.264; we don't advertise hvc1 so the
 // browser doesn't reject the source on engines without HEVC decode.
@@ -197,6 +312,12 @@ const initPlayer = () => {
   })
 
   player.on('loadedmetadata', () => {
+    // A quality swap captured the playhead — restore it before anything else.
+    if (pendingSeek != null && player) {
+      player.currentTime(pendingSeek)
+      pendingSeek = null
+      return
+    }
     if (cwRestored) return
     if (previous.value && player) {
       player.currentTime(previous.value.position)
@@ -206,6 +327,21 @@ const initPlayer = () => {
 
   player.on('timeupdate', upsertProgress)
   player.on('play', recordHistoryStart)
+
+  // Auto-downgrade on a struggling network (auto mode only). A sustained stall
+  // (still waiting after STALL_TIMEOUT_MS) or frequent re-buffering (3 stalls
+  // within 30s) steps down one playable rung.
+  player.on('waiting', () => {
+    if (mode.value !== 'auto') return
+    clearStallTimer()
+    stallTimer = setTimeout(autoDowngrade, STALL_TIMEOUT_MS)
+    const now = Date.now()
+    recentStalls = recentStalls.filter((t) => now - t < 30000)
+    recentStalls.push(now)
+    if (recentStalls.length >= 3) autoDowngrade()
+  })
+  player.on('playing', clearStallTimer)
+  player.on('canplaythrough', clearStallTimer)
 
   // On mobile, force landscape while the video is fullscreen and restore the
   // natural orientation on exit. Uses the Screen Orientation API, which only
@@ -255,6 +391,8 @@ onMounted(() => initPlayer())
 onBeforeUnmount(() => {
   cw.flush()
   wh.flush()
+  clearStallTimer()
+  if (downgradeNoticeTimer) clearTimeout(downgradeNoticeTimer)
   // Release any landscape lock so non-player pages rotate freely again.
   ;(screen.orientation as ScreenOrientation & { unlock?: () => void })?.unlock?.()
   if (player) {
@@ -334,11 +472,71 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
+    <!-- Quality picker -->
+    <div v-if="allQualities.length" class="absolute top-4 right-4 z-30">
+      <button
+        class="chip bg-black/60 text-slate-100 backdrop-blur-md border border-white/10 hover:bg-black/80 transition-colors"
+        @click="showQualityMenu = !showQualityMenu"
+      >
+        <span class="opacity-60">Quality:</span>
+        <span class="font-semibold ml-1">{{ qualityLabel }}</span>
+      </button>
+
+      <!-- Click-away backdrop -->
+      <div v-if="showQualityMenu" class="fixed inset-0 -z-10" @click="showQualityMenu = false" />
+
+      <div
+        v-if="showQualityMenu"
+        class="absolute right-0 mt-2 w-44 rounded-lg bg-black/90 backdrop-blur-md border border-white/10 overflow-hidden text-sm shadow-xl"
+      >
+        <button
+          class="w-full px-3 py-2 text-left hover:bg-white/10 flex items-center justify-between"
+          :class="mode === 'auto' ? 'text-accent-gold' : 'text-slate-200'"
+          @click="selectAuto"
+        >
+          <span>Auto</span>
+          <span v-if="mode === 'auto' && autoResolution" class="text-xs opacity-60">{{ autoResolution }}</span>
+        </button>
+        <button
+          v-for="q in ladder"
+          :key="q.resolution"
+          class="w-full px-3 py-2 text-left hover:bg-white/10 flex items-center justify-between"
+          :class="mode === 'pinned' && pinnedResolution === q.resolution ? 'text-accent-gold' : 'text-slate-200'"
+          @click="selectQuality(q.resolution)"
+        >
+          <span>{{ q.resolution }}</span>
+          <span class="text-xs opacity-50">{{ prettySize(q.size_bytes) }}</span>
+        </button>
+        <template v-if="riskyQualities.length">
+          <div class="px-3 py-1 text-[10px] uppercase tracking-wide text-slate-500 border-t border-white/10">
+            May not play
+          </div>
+          <button
+            v-for="q in riskyQualities"
+            :key="`hevc-${q.resolution}`"
+            class="w-full px-3 py-2 text-left hover:bg-white/10 flex items-center justify-between"
+            :class="mode === 'pinned' && pinnedResolution === q.resolution ? 'text-accent-gold' : 'text-slate-400'"
+            @click="selectQuality(q.resolution)"
+          >
+            <span>{{ q.resolution }} <span class="opacity-50">HEVC</span></span>
+            <span class="text-xs opacity-50">{{ prettySize(q.size_bytes) }}</span>
+          </button>
+        </template>
+      </div>
+    </div>
+
     <div
       v-if="videoError"
       class="absolute bottom-20 left-1/2 -translate-x-1/2 chip bg-red-900/90 text-red-100 border border-red-500/50 z-30"
     >
       Playback error: {{ videoError }}
+    </div>
+
+    <div
+      v-if="downgradeNotice"
+      class="absolute bottom-20 left-1/2 -translate-x-1/2 chip bg-black/80 text-amber-200 border border-amber-500/40 z-30"
+    >
+      {{ downgradeNotice }}
     </div>
   </div>
 </template>
