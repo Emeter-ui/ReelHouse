@@ -386,9 +386,43 @@ watch(
   syncCaptions,
 )
 
-onMounted(() => initPlayer())
+const handleKeyDown = (e: KeyboardEvent) => {
+  if (!player) return
+  
+  // Don't trigger if user is typing in an input field or focusing a button
+  const target = e.target as HTMLElement
+  if (target && ['INPUT', 'TEXTAREA', 'BUTTON'].includes(target.tagName)) return
+
+  if (e.key === 'ArrowRight') {
+    player.currentTime((player.currentTime() || 0) + 10)
+    e.preventDefault()
+  } else if (e.key === 'ArrowLeft') {
+    player.currentTime((player.currentTime() || 0) - 10)
+    e.preventDefault()
+  } else if (e.key === ' ' || e.code === 'Space') {
+    if (player.paused()) {
+      player.play()?.catch(() => {})
+    } else {
+      player.pause()
+    }
+    e.preventDefault()
+  } else if (e.key === 'f' || e.key === 'F') {
+    if (player.isFullscreen()) {
+      player.exitFullscreen()
+    } else {
+      player.requestFullscreen()
+    }
+    e.preventDefault()
+  }
+}
+
+onMounted(() => {
+  initPlayer()
+  window.addEventListener('keydown', handleKeyDown)
+})
 
 onBeforeUnmount(() => {
+  window.removeEventListener('keydown', handleKeyDown)
   cw.flush()
   wh.flush()
   clearStallTimer()
