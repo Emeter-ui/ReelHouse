@@ -21,7 +21,7 @@ from moviebox_api.v3.constants import ResolutionType
 from moviebox_api.v3.core import DownloadableVideoFilesDetail, ItemDetails, Search
 from moviebox_api.v3.http_client import MovieBoxHttpClient
 from moviebox_api.v3.models.downloadables import VideoFileMetadata
-from moviebox_api.v3.urls import PLAY_INFO_PATH
+from moviebox_api.v3.urls import EXT_CAPTIONS_PATH, PLAY_INFO_PATH
 
 from .. import fzmovies
 from ..cache import TTLCache
@@ -580,6 +580,40 @@ async def _fetch_play_streams(
     return data
 
 
+async def _fetch_ext_captions(
+    client: MovieBoxHttpClient, resource_id: str
+) -> list[dict[str, str]]:
+    """Pull MovieBox's external (SRT) caption tracks for a single resource_id.
+
+    The H5 `/subject/download` captions field is empty for many series
+    (donghua especially) — the real catalogue lives on
+    `/subject-api/get-ext-captions` keyed by per-file resource_id. SRT URLs
+    are CloudFront *signed URLs* (policy embedded in the querystring), so
+    they're self-authenticated and our `/api/captions` SRT→VTT proxy can
+    fetch them without extra headers.
+    """
+    if not resource_id:
+        return []
+    try:
+        raw = await client.get_from_api(
+            EXT_CAPTIONS_PATH, params={"resourceId": resource_id}
+        )
+    except Exception as exc:
+        logger.warning(
+            "[ext-captions] resource_id=%s fetch failed: %s", resource_id, exc
+        )
+        return []
+    items = raw.get("extCaptions") or []
+    return [
+        {
+            "lang": c.get("lanName") or c.get("lan") or "",
+            "url": c.get("url") or "",
+        }
+        for c in items
+        if c.get("url")
+    ]
+
+
 async def _fetch_dash_streams(
     client: MovieBoxHttpClient, subject_id: str, se: int, ep: int
 ) -> list[dict[str, Any]]:
@@ -1018,6 +1052,22 @@ async def _resolve(
                     target_subject_id, dash_streams,
                 )
                 dash_streams = []
+
+            # Merge in MovieBox's external SRT captions (the H5 /subject/download
+            # response is sparse; the mobile ext-captions endpoint is where the
+            # English/etc. tracks actually live for series). Keyed by the
+            # episode's resource_id, so pick any file we already fetched for
+            # (eff_se, eff_ep).
+            resource_id_for_caps = next(
+                (f.resource_id for f in download_files if f.resource_id),
+                "",
+            )
+            ext_caps = await _fetch_ext_captions(client, resource_id_for_caps)
+            if ext_caps:
+                seen_urls = {c.get("url") for c in captions}
+                captions = list(captions) + [
+                    c for c in ext_caps if c.get("url") not in seen_urls
+                ]
 
     qualities: list[dict[str, Any]] = []
     for s in streams:
