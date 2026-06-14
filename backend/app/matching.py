@@ -1,10 +1,13 @@
 """Match a TMDB title (+ optional year) against moviebox-api search candidates.
 
 Strategy:
-- prefer candidates whose year is within ±1 of the target,
 - score by token-set ratio on titles,
-- accept the best ≥ 85 with a year-aligned candidate,
-- otherwise accept the best ≥ 70 across all candidates,
+- accept the best year-aligned (±1) candidate at ≥ 85,
+- otherwise accept the best by title score across all candidates at ≥ 70,
+  with year-alignment as a tiebreaker (NOT a primary sort key — a weakly
+  titled but year-aligned candidate must not outrank a perfect title match
+  whose MovieBox year is off, e.g. ongoing donghua tagged with the current
+  year on MovieBox vs. the original air year on TMDB),
 - otherwise no match.
 """
 from __future__ import annotations
@@ -53,12 +56,14 @@ def best_match(
         )
         scored.append((primary, secondary, c, year_ok))
 
-    scored.sort(key=lambda t: (t[3], t[0], t[1]), reverse=True)
-
-    aligned = [s for s in scored if s[3]]
+    aligned = sorted(
+        (s for s in scored if s[3]), key=lambda t: (t[0], t[1]), reverse=True
+    )
     if aligned and aligned[0][0] >= aligned_threshold:
         return aligned[0][2]
 
+    # Fallback: rank by title score, with year-alignment only as a tiebreaker.
+    scored.sort(key=lambda t: (t[0], t[1], t[3]), reverse=True)
     if scored and scored[0][0] >= fallback_threshold:
         return scored[0][2]
 
