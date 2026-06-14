@@ -1,11 +1,10 @@
 <script setup lang="ts">
 import videojs from 'video.js'
 import 'video.js/dist/video-js.css'
-// Side-effect import: registers the DASH source handler with video.js so
-// `player.src({type: 'application/dash+xml'})` boots dash.js under the hood.
-// Lets us play MovieBox's mobile play-info manifests (HEVC fMP4) without
-// swapping the player.
-import 'videojs-contrib-dash'
+// video.js 8 ships @videojs/http-streaming (VHS), which plays DASH out of the
+// box — we just pass `type: 'application/dash+xml'` and it parses the .mpd
+// itself. (We tried videojs-contrib-dash first; that package is pinned to
+// dash.js 4 + video.js 5–7 and silently no-ops on this stack.)
 import {
   canFetchDirect,
   captionsUrl,
@@ -308,78 +307,78 @@ const syncCaptions = () => {
   }
 }
 
-// dash.js MediaPlayer is attached by videojs-contrib-dash at `player.dash.mediaPlayer`
-// after the source loads. Locking a single representation prevents dash.js's ABR
-// from drifting away from the height the viewer picked — without this, choosing
-// 720p on a fast network can silently flip up to 1080p.
+// VHS exposes `representations()` on its tech object: each entry is a
+// playable rendition with a `.enabled(bool)` switch. Enabling only the one
+// at `height` pins the chosen rung — VHS's ABR honours `enabled` and won't
+// drift away from the viewer's pick.
 const lockDashHeight = (height: number) => {
   const tryLock = (): boolean => {
-    const mp: any = (player as any)?.dash?.mediaPlayer
-    if (!mp || typeof mp.getBitrateInfoListFor !== 'function') return false
-    mp.updateSettings?.({
-      streaming: { abr: { autoSwitchBitrate: { video: false } } },
+    const tech: any = (player as any)?.tech?.(true)
+    const reps = tech?.vhs?.representations?.()
+    if (!reps || !reps.length) return false
+    let matched = false
+    reps.forEach((r: any) => {
+      const enable = r.height === height
+      if (enable) matched = true
+      try { r.enabled?.(enable) } catch { /* some reps may be audio-only */ }
     })
-    const list: { qualityIndex: number; height: number }[] =
-      mp.getBitrateInfoListFor('video') || []
-    if (!list.length) return false
-    const exact = list.find((b) => b.height === height)
-    const target = exact ?? list.reduce(
-      (best, b) => (Math.abs(b.height - height) < Math.abs(best.height - height) ? b : best),
-      list[0],
-    )
-    mp.setQualityFor('video', target.qualityIndex, true)
-    return true
+    return matched
   }
   if (tryLock()) return
-  const mp: any = (player as any)?.dash?.mediaPlayer
-  if (mp?.on) {
-    const handler = () => {
-      tryLock()
-      mp.off?.('streamInitialized', handler)
-    }
-    mp.on('streamInitialized', handler)
+  // Reps appear after VHS parses the manifest; loadedmetadata is the
+  // earliest reliable hook.
+  const onReady = () => {
+    tryLock()
+    player?.off('loadedmetadata', onReady)
   }
+  player?.on('loadedmetadata', onReady)
 }
 
-// Each segment fetch needs the signed CloudFront cookie. dash.js can't set
-// cross-origin cookies from JS, so we intercept every request and rewrite
-// the URL to flow through `/api/proxy?cookie=…` instead. The injected
-// `<BaseURL>` in the manifest makes the URLs we see here absolute CDN URLs.
-const installDashRequestInterceptor = (cookie: string, referer?: string) => {
-  const mp: any = (player as any)?.dash?.mediaPlayer
-  if (!mp || typeof mp.addRequestInterceptor !== 'function') return
-  // Idempotent: dash.js doesn't expose a removal API, but addRequestInterceptor
-  // is keyed on identity. We tag the function so a second source change can
-  // skip re-adding.
-  if (mp.__rhCookieInterceptor === cookie) return
-  mp.__rhCookieInterceptor = cookie
-  mp.addRequestInterceptor((request: any) => {
-    const url: string = request.url || ''
-    // Don't double-wrap requests already pointed at our proxy (e.g. the
-    // manifest itself, which arrives through /api/dash-manifest).
-    if (url.includes('/api/proxy?') || url.includes('/api/dash-manifest?')) {
-      return Promise.resolve(request)
-    }
+// VHS issues every manifest + segment fetch through `videojs.Vhs.xhr`. Its
+// `beforeRequest` is global (not per-player), so we install it once and
+// gate behaviour on a module-scoped DASH context. When `_dashContext` is
+// null the hook is a no-op, leaving non-DASH playback untouched.
+let _dashContext: { cookie: string; referer?: string } | null = null
+let _vhsHookInstalled = false
+const installVhsRewriteHook = () => {
+  if (_vhsHookInstalled) return
+  const Vhs = (videojs as any).Vhs
+  if (!Vhs?.xhr) return
+  _vhsHookInstalled = true
+  Vhs.xhr.beforeRequest = (options: any) => {
+    if (!_dashContext) return options
+    const url: string = options?.uri || ''
+    // Skip URLs that already point at our proxy / manifest endpoint.
+    if (url.includes('/api/proxy?') || url.includes('/api/dash-manifest?')) return options
     if (/^https?:\/\//.test(url)) {
-      request.url = proxiedUrl(url, referer, undefined, cookie)
+      options.uri = proxiedUrl(url, _dashContext.referer, undefined, _dashContext.cookie)
     }
-    return Promise.resolve(request)
-  })
+    return options
+  }
 }
 
 const applySource = () => {
   if (!player || !finalSrc.value) return
   videoError.value = null
+  // For DASH, set the rewrite context + install the hook BEFORE player.src()
+  // so the first segment fetches that VHS kicks off after parsing the
+  // manifest already see the proxy-rewriting hook.
+  if (sourceType.value === 'application/dash+xml') {
+    const q = activeQuality.value
+    _dashContext = q?.sign_cookie
+      ? { cookie: q.sign_cookie, referer: props.resolved?.play_referer }
+      : null
+    installVhsRewriteHook()
+  } else {
+    _dashContext = null
+  }
   player.src({ src: finalSrc.value, type: sourceType.value })
   player.play()?.catch(() => {
     /* autoplay-blocked is fine; user can click play */
   })
   if (sourceType.value === 'application/dash+xml') {
-    const q = activeQuality.value
-    if (q?.sign_cookie) {
-      installDashRequestInterceptor(q.sign_cookie, props.resolved?.play_referer)
-    }
-    if (q?.target_height) lockDashHeight(q.target_height)
+    const target = activeQuality.value?.target_height
+    if (target) lockDashHeight(target)
   }
 }
 
