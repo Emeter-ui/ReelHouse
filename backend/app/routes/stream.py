@@ -21,6 +21,7 @@ from moviebox_api.v3.constants import ResolutionType
 from moviebox_api.v3.core import DownloadableVideoFilesDetail, ItemDetails, Search
 from moviebox_api.v3.http_client import MovieBoxHttpClient
 from moviebox_api.v3.models.downloadables import VideoFileMetadata
+from moviebox_api.v3.urls import PLAY_INFO_PATH
 
 from .. import fzmovies
 from ..cache import TTLCache
@@ -579,6 +580,75 @@ async def _fetch_play_streams(
     return data
 
 
+async def _fetch_dash_streams(
+    client: MovieBoxHttpClient, subject_id: str, se: int, ep: int
+) -> list[dict[str, Any]]:
+    """Expand MovieBox's mobile play-info DASH manifest into one entry per
+    embedded resolution.
+
+    For series like Renegade Immortal, the 480p/720p single-episode cuts only
+    exist inside this DASH (HEVC fMP4) manifest — the resource (download)
+    endpoint just has the 1080p multi-episode compilation. Each returned
+    entry points at the same `.mpd`; the player loads it with shaka and locks
+    ABR to the chosen height.
+    """
+    try:
+        raw = await client.get_from_api(
+            PLAY_INFO_PATH,
+            params={"subjectId": subject_id, "se": se, "ep": ep},
+        )
+    except Exception as exc:
+        logger.warning(
+            "[play-info] subject_id=%s se=%s ep=%s fetch failed: %s",
+            subject_id, se, ep, exc,
+        )
+        return []
+    streams = raw.get("streams") or []
+    out: list[dict[str, Any]] = []
+    for s in streams:
+        if (s.get("format") or "").lower() != "dash":
+            continue
+        url = s.get("url")
+        if not url:
+            continue
+        heights: list[int] = []
+        for tok in str(s.get("resolutions") or "").split(","):
+            tok = tok.strip()
+            if tok.isdigit():
+                heights.append(int(tok))
+        if not heights:
+            continue
+        # File size is roughly linear in bitrate, which is roughly linear in
+        # height — split the manifest's total across variants ∝ height so the
+        # UI's "~MB" hint is in the right ballpark. The player only downloads
+        # the chosen variant; this is a display estimate, not an exact figure.
+        total = int(s.get("size") or 0)
+        h_sum = sum(heights) or 1
+        codec = (s.get("codecName") or "hevc").lower()
+        # CloudFront signs the whole manifest tree with a Set-Cookie payload
+        # that has to travel on every segment fetch. The browser can't set
+        # cross-origin cookies via JS, so we hand the string to the client and
+        # it routes manifest + segments through `/api/proxy?cookie=…`.
+        sign_cookie = s.get("signCookie") or ""
+        for h in heights:
+            out.append(
+                {
+                    "resolution": f"{h}p",
+                    "size_bytes": int(total * h / h_sum) if total else 0,
+                    "url": url,
+                    "codec": codec,
+                    "format": "dash",
+                    "target_height": h,
+                    "sign_cookie": sign_cookie,
+                }
+            )
+    logger.info(
+        "[play-info] subject_id=%s se=%s ep=%s dash_variants=%d",
+        subject_id, se, ep, len(out),
+    )
+    return out
+
+
 async def _fetch_captions(
     domain: str,
     client: AsyncSession,
@@ -832,14 +902,18 @@ def _select_best_stream(streams: list[dict[str, Any]]) -> dict[str, Any] | None:
 
 
 def _merge_for_player(
-    play: list[dict[str, Any]], download: list[dict[str, Any]]
+    play: list[dict[str, Any]],
+    download: list[dict[str, Any]],
+    dash: list[dict[str, Any]] | None = None,
 ) -> list[dict[str, Any]]:
-    """Combine H5 play and mobile download variants, deduping by resolution.
-    Play list (H.264) comes first, so at any common resolution H.264 wins;
-    HEVC-only resolutions (often 4K) fill the remaining slots. The player
-    surfaces a decode-error overlay if the browser can't handle HEVC."""
+    """Combine H5 play, mobile download, and DASH variants, deduping by
+    resolution. Priority is play > download > dash, so a progressive MP4 at
+    a given height wins over the DASH variant (browser-universal, no shaka
+    needed). DASH fills in resolutions the MP4 sources don't have —
+    typically 480p/720p single-episode cuts for series whose MP4 catalog only
+    has a 1080p multi-episode compilation."""
     by_res: dict[str, dict[str, Any]] = {}
-    for q in play + download:
+    for q in play + download + (dash or []):
         r = q.get("resolution")
         if not r or r in by_res:
             continue
@@ -905,15 +979,19 @@ async def _resolve(
                         target_subject_id, se, ep, eff_se, eff_ep,
                     )
 
-            # Now fetch play streams and captions concurrently using the
-            # (possibly remapped) effective (se, ep). Captions failing must not
-            # sink the whole resolve, so gather with return_exceptions.
-            play_data, captions = await asyncio.gather(
+            # Now fetch play streams, DASH variants, and captions concurrently
+            # using the (possibly remapped) effective (se, ep). Captions /
+            # DASH failing must not sink the resolve, so gather with
+            # return_exceptions.
+            play_data, captions, dash_streams = await asyncio.gather(
                 _fetch_play_streams(
                     domain, web, target_subject_id, detail_path, eff_se, eff_ep
                 ),
                 _fetch_captions(
                     domain, web, target_subject_id, detail_path, eff_se, eff_ep
+                ),
+                _fetch_dash_streams(
+                    client, target_subject_id, eff_se, eff_ep
                 ),
                 return_exceptions=True,
             )
@@ -933,6 +1011,13 @@ async def _resolve(
                     target_subject_id, captions,
                 )
                 captions = []
+
+            if isinstance(dash_streams, BaseException):
+                logger.warning(
+                    "[play-info] subject_id=%s fetch failed: %s",
+                    target_subject_id, dash_streams,
+                )
+                dash_streams = []
 
     qualities: list[dict[str, Any]] = []
     for s in streams:
@@ -987,9 +1072,11 @@ async def _resolve(
     # some serve resolutions the mobile download endpoint never returns.
     play_only = qualities
 
-    # Merge play + download variants for the streaming pool; both codecs are
-    # surfaced so the picker can offer the full ladder.
-    qualities = _merge_for_player(qualities, download_qualities)
+    # Merge play + download + DASH variants for the streaming pool. DASH
+    # only fills resolutions the MP4 sources don't cover (see
+    # `_merge_for_player`), and the download list stays MP4-only — DASH
+    # manifests can't be saved as a single file.
+    qualities = _merge_for_player(qualities, download_qualities, dash_streams)
     # Downloads prefer HEVC (smaller files), but fall back to H.264 per
     # resolution: if a resolution only exists as H.264, keep it rather than
     # drop it. Otherwise titles whose high-res ladder is H.264-only (e.g.

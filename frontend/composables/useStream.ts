@@ -5,7 +5,17 @@ export interface StreamOption {
   size_bytes: number
   url: string
   codec?: string
+  /** "" for progressive MP4, "dash" for a DASH manifest, "mp4" from the H5
+   * play endpoint. The player dispatches on this. */
   format?: string
+  /** For DASH variants: the height the player should lock the dash.js
+   * representation to. Multiple StreamOption rows share the same .mpd URL
+   * but differ in target_height. */
+  target_height?: number
+  /** CloudFront signed cookie string for DASH variants. The browser can't
+   * set cross-origin cookies via JS, so this rides as a query param on the
+   * proxy URL for both manifest and segment fetches. */
+  sign_cookie?: string
 }
 
 export interface StreamResolveResponse {
@@ -34,11 +44,35 @@ export function streamHeight(resolution: string | undefined): number {
  * MovieBox's lower rungs are frequently HEVC/H.265, which throws decode-error 3
  * on engines without HEVC support — so those must never be picked automatically.
  * Unknown/empty codec is treated as playable (let the browser try).
+ *
+ * `isDash` lets the caller signal "this stream goes through dash.js / MSE";
+ * HEVC inside MSE works wherever the browser ships an HEVC decoder
+ * (Chrome 107+, Safari, Edge — Firefox returns false).
  */
-export function isPlayableCodec(codec?: string): boolean {
+export function isPlayableCodec(codec?: string, opts?: { isDash?: boolean }): boolean {
   const c = (codec ?? '').toLowerCase()
   if (!c) return true
-  return c.includes('h264') || c.includes('avc')
+  if (c.includes('h264') || c.includes('avc')) return true
+  if (opts?.isDash && (c.includes('hevc') || c.includes('265'))) {
+    return canPlayHevcMse()
+  }
+  return false
+}
+
+let _hevcMseCheck: boolean | null = null
+/** Cached MSE.isTypeSupported probe for HEVC. Browsers without an HEVC
+ * decoder (notably Firefox) say false here, so we hide DASH-HEVC streams
+ * from the picker on those clients. */
+export function canPlayHevcMse(): boolean {
+  if (_hevcMseCheck != null) return _hevcMseCheck
+  if (typeof MediaSource === 'undefined' || !MediaSource.isTypeSupported) {
+    return (_hevcMseCheck = false)
+  }
+  _hevcMseCheck = (
+    MediaSource.isTypeSupported('video/mp4; codecs="hvc1.1.6.L93.B0"') ||
+    MediaSource.isTypeSupported('video/mp4; codecs="hev1.1.6.L93.B0"')
+  )
+  return _hevcMseCheck
 }
 
 export interface NetworkHint {
@@ -155,11 +189,35 @@ export function captionsUrl(rawUrl: string) {
  * direct CDN URL fails the CORS / Referer probe. Pass `referer` so the
  * proxy can send the Referer the upstream CDN expects.
  */
-export function proxiedUrl(rawUrl: string, referer?: string, downloadAs?: string) {
+export function proxiedUrl(
+  rawUrl: string,
+  referer?: string,
+  downloadAs?: string,
+  cookie?: string,
+) {
   const { public: { apiBase } } = useRuntimeConfig()
   let url = `${apiBase}/api/proxy?url=${encodeURIComponent(rawUrl)}`
   if (referer) url += `&referer=${encodeURIComponent(referer)}`
   if (downloadAs) url += `&dl=${encodeURIComponent(downloadAs)}`
+  if (cookie) url += `&cookie=${encodeURIComponent(cookie)}`
+  return url
+}
+
+/**
+ * Wrap a DASH manifest URL through `/api/dash-manifest`, which fetches the
+ * `.mpd` with the signed CloudFront cookie + injects a `<BaseURL>` so
+ * segments resolve to absolute CDN URLs (the player then runs each segment
+ * fetch through `proxiedUrl` with the same cookie via an interceptor).
+ */
+export function dashManifestUrl(
+  rawUrl: string,
+  referer?: string,
+  cookie?: string,
+) {
+  const { public: { apiBase } } = useRuntimeConfig()
+  let url = `${apiBase}/api/dash-manifest?url=${encodeURIComponent(rawUrl)}`
+  if (referer) url += `&referer=${encodeURIComponent(referer)}`
+  if (cookie) url += `&cookie=${encodeURIComponent(cookie)}`
   return url
 }
 

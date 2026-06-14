@@ -17,8 +17,8 @@ import os
 from urllib.parse import quote, urlparse
 
 import httpx
-from fastapi import APIRouter, HTTPException, Request
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi.responses import Response, StreamingResponse
 
 router = APIRouter()
 
@@ -79,6 +79,7 @@ async def proxy(
     request: Request,
     referer: str | None = None,
     dl: str | None = None,
+    cookie: str | None = None,
 ) -> StreamingResponse:
     if not _is_allowed_target(url):
         raise HTTPException(status_code=400, detail={"error": "invalid url"})
@@ -95,6 +96,8 @@ async def proxy(
             f"?url={quote(url, safe='')}"
             f"&referer={quote(ref, safe='')}"
         )
+        if cookie:
+            upstream_url += f"&cookie={quote(cookie, safe='')}"
         upstream_headers: dict[str, str] = {
             "Accept": "*/*",
             "Accept-Encoding": "identity",
@@ -114,6 +117,11 @@ async def proxy(
         else:
             upstream_headers["Referer"] = f"{parsed.scheme}://{parsed.netloc}/"
             upstream_headers["Origin"] = f"{parsed.scheme}://{parsed.netloc}"
+        # CloudFront signed cookies are how MovieBox gates DASH manifests +
+        # segments. The browser can't set cross-origin cookies via JS, so the
+        # caller passes the cookie string here and we forward it upstream.
+        if cookie:
+            upstream_headers["Cookie"] = cookie
 
     # Forward Range from the browser so video seeking works (in both modes).
     incoming_range = request.headers.get("range")
@@ -172,5 +180,92 @@ async def proxy(
         status_code=upstream.status_code,
         headers=response_headers,
         media_type=media_type,
+    )
+
+
+@router.get("/dash-manifest")
+async def dash_manifest(
+    url: str = Query(...),
+    cookie: str | None = Query(default=None),
+    referer: str | None = Query(default=None),
+) -> Response:
+    """Fetch a MovieBox DASH manifest, inject a ``<BaseURL>`` so segments
+    resolve to absolute CDN URLs, return the rewritten XML.
+
+    Why this exists: MovieBox's manifests don't declare a `<BaseURL>` and
+    their `SegmentTemplate` paths are relative (``init-stream0.m4s``,
+    ``chunk-stream0-00001.m4s``). dash.js would resolve those against the
+    document URL — which, when the manifest is fetched through our generic
+    `/api/proxy`, is the proxy URL itself, producing nonsense segment URLs.
+    Injecting `<BaseURL>` at the CDN directory makes segments absolute again;
+    the player's request interceptor then routes them through `/api/proxy`
+    with the same signed cookie.
+    """
+    if not _is_allowed_target(url):
+        raise HTTPException(status_code=400, detail={"error": "invalid url"})
+    parsed = urlparse(url)
+
+    # Same tunnel selection as /proxy — datacenter egress is 403'd on the CDN.
+    use_fly_tunnel = _should_tunnel_via_fly(parsed.hostname or "")
+    if use_fly_tunnel:
+        ref = referer if referer and urlparse(referer).scheme in ("http", "https") else "https://netfilm.world/"
+        upstream_url = (
+            f"{_FLY_PROXY_BASE}/cdn"
+            f"?url={quote(url, safe='')}"
+            f"&referer={quote(ref, safe='')}"
+        )
+        if cookie:
+            upstream_url += f"&cookie={quote(cookie, safe='')}"
+        upstream_headers: dict[str, str] = {
+            "Accept": "application/dash+xml,application/xml,*/*",
+            "Accept-Encoding": "identity",
+        }
+        if _FLY_PROXY_SECRET:
+            upstream_headers["X-Auth"] = _FLY_PROXY_SECRET
+    else:
+        upstream_url = url
+        upstream_headers = dict(UPSTREAM_HEADERS)
+        upstream_headers["Referer"] = (
+            referer if referer and urlparse(referer).scheme in ("http", "https")
+            else f"{parsed.scheme}://{parsed.netloc}/"
+        )
+        upstream_headers["Origin"] = (
+            f"{urlparse(referer).scheme}://{urlparse(referer).netloc}"
+            if referer else f"{parsed.scheme}://{parsed.netloc}"
+        )
+        if cookie:
+            upstream_headers["Cookie"] = cookie
+
+    try:
+        r = await _client.get(upstream_url, headers=upstream_headers)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail={"error": "upstream", "message": str(exc)})
+    if r.status_code >= 400:
+        raise HTTPException(status_code=r.status_code, detail={"error": "upstream error"})
+
+    xml = r.text
+    # The CDN directory the manifest lives in — segments resolve against this.
+    base_dir = url.rsplit("/", 1)[0] + "/"
+    # Insert <BaseURL> as the first child of every <Period>. dash.js prefers
+    # Period-level BaseURL over MPD-level (per spec) — using Period scope keeps
+    # the injection safe even if the manifest already had a top-level BaseURL.
+    base_tag = f"<BaseURL>{base_dir}</BaseURL>"
+    injected = xml.replace("<Period", f"{base_tag}<Period", 1)
+    # Above only injects before the first <Period>, but as a sibling — that's
+    # outside the Period element. Move it inside instead.
+    if base_tag + "<Period" in injected:
+        # Pull the BaseURL line back out and inject after `>` of the Period tag.
+        injected = injected.replace(base_tag + "<Period", "<Period")
+        # Now find the closing `>` of the first <Period ...> and insert the tag.
+        idx = injected.find("<Period")
+        if idx != -1:
+            close = injected.find(">", idx)
+            if close != -1:
+                injected = injected[: close + 1] + base_tag + injected[close + 1 :]
+
+    return Response(
+        content=injected,
+        media_type="application/dash+xml",
+        headers={"Cache-Control": "no-store"},
     )
 

@@ -1,10 +1,16 @@
 <script setup lang="ts">
 import videojs from 'video.js'
 import 'video.js/dist/video-js.css'
+// Side-effect import: registers the DASH source handler with video.js so
+// `player.src({type: 'application/dash+xml'})` boots dash.js under the hood.
+// Lets us play MovieBox's mobile play-info manifests (HEVC fMP4) without
+// swapping the player.
+import 'videojs-contrib-dash'
 import {
   canFetchDirect,
   captionsUrl,
   proxiedUrl,
+  dashManifestUrl,
   isPlayableCodec,
   streamHeight,
   pickConnectionAwareResolution,
@@ -59,8 +65,17 @@ const allQualities = computed<StreamOption[]>(() =>
     (a, b) => streamHeight(b.resolution) - streamHeight(a.resolution),
   ),
 )
-const ladder = computed(() => allQualities.value.filter((q) => isPlayableCodec(q.codec)))
-const riskyQualities = computed(() => allQualities.value.filter((q) => !isPlayableCodec(q.codec)))
+const isDashStream = (q: StreamOption) => (q.format ?? '').toLowerCase() === 'dash'
+const ladder = computed(() =>
+  allQualities.value.filter((q) => isPlayableCodec(q.codec, { isDash: isDashStream(q) })),
+)
+// Auto-downgrade stays inside progressive MP4 — re-bootstrapping dash.js
+// mid-playback on a stalling network would thrash worse than the original
+// stall, and the MP4 ladder is always present when DASH is.
+const autoDowngradeLadder = computed(() => ladder.value.filter((q) => !isDashStream(q)))
+const riskyQualities = computed(() =>
+  allQualities.value.filter((q) => !isPlayableCodec(q.codec, { isDash: isDashStream(q) })),
+)
 
 // 'auto' = connection default + auto-downgrade; 'pinned' = a viewer-chosen rung.
 const mode = ref<'auto' | 'pinned'>('auto')
@@ -75,20 +90,24 @@ const currentResolution = computed(() =>
 
 // (Re)derive the auto default whenever the ladder changes (new title/episode).
 // A preferredResolution prop (URL ?q=) pins that rung up front if it exists.
+// `pinnedResolution` can be any pickable rung (incl. DASH); the auto default
+// stays inside the progressive MP4 pool to avoid surprising auto-downgrades
+// into DASH-HEVC on Firefox (where canPlayHevcMse is false anyway).
 watch(
-  ladder,
-  (list) => {
-    if (!list.length) {
+  [ladder, autoDowngradeLadder],
+  ([pickable, autoPool]) => {
+    if (!pickable.length) {
       autoResolution.value = null
       return
     }
     const wanted = props.preferredResolution
-    if (wanted && list.some((q) => q.resolution === wanted)) {
+    if (wanted && pickable.some((q) => q.resolution === wanted)) {
       mode.value = 'pinned'
       pinnedResolution.value = wanted
     }
-    if (!autoResolution.value || !list.some((q) => q.resolution === autoResolution.value)) {
-      autoResolution.value = pickConnectionAwareResolution(list)
+    const pool = autoPool.length ? autoPool : pickable
+    if (!autoResolution.value || !pool.some((q) => q.resolution === autoResolution.value)) {
+      autoResolution.value = pickConnectionAwareResolution(pool)
     }
   },
   { immediate: true },
@@ -143,7 +162,7 @@ const flashNotice = (msg: string) => {
 const autoDowngrade = () => {
   if (mode.value !== 'auto') return
   clearStallTimer()
-  const list = ladder.value
+  const list = autoDowngradeLadder.value
   const idx = list.findIndex((q) => q.resolution === autoResolution.value)
   if (idx === -1 || idx >= list.length - 1) return
   const next = list[idx + 1]
@@ -169,11 +188,12 @@ const selectAuto = () => {
   showQualityMenu.value = false
 }
 
-// MovieBox's H5 play endpoint serves H.264; we don't advertise hvc1 so the
-// browser doesn't reject the source on engines without HEVC decode.
 const sourceType = computed(() => {
+  const q = activeQuality.value
+  if (q?.format === 'dash') return 'application/dash+xml'
   const u = (activeStreamUrl.value ?? '').toLowerCase()
   if (u.includes('.m3u8')) return 'application/x-mpegURL'
+  if (u.endsWith('.mpd') || u.includes('.mpd?')) return 'application/dash+xml'
   return 'video/mp4'
 })
 
@@ -199,6 +219,16 @@ watch(
       return
     }
     probeStatus.value = 'probing'
+    // DASH manifests sit behind CloudFront signed cookies that the browser
+    // can't apply cross-origin from JS — always go through the dedicated
+    // manifest endpoint, which fetches the .mpd with the signed cookie and
+    // injects a <BaseURL> so segments resolve to absolute CDN URLs.
+    const q = activeQuality.value
+    if (q?.format === 'dash') {
+      finalSrc.value = dashManifestUrl(url, props.resolved?.play_referer, q.sign_cookie)
+      probeStatus.value = 'proxied'
+      return
+    }
     const direct = await canFetchDirect(url)
     if (direct) {
       finalSrc.value = url
@@ -278,6 +308,65 @@ const syncCaptions = () => {
   }
 }
 
+// dash.js MediaPlayer is attached by videojs-contrib-dash at `player.dash.mediaPlayer`
+// after the source loads. Locking a single representation prevents dash.js's ABR
+// from drifting away from the height the viewer picked — without this, choosing
+// 720p on a fast network can silently flip up to 1080p.
+const lockDashHeight = (height: number) => {
+  const tryLock = (): boolean => {
+    const mp: any = (player as any)?.dash?.mediaPlayer
+    if (!mp || typeof mp.getBitrateInfoListFor !== 'function') return false
+    mp.updateSettings?.({
+      streaming: { abr: { autoSwitchBitrate: { video: false } } },
+    })
+    const list: { qualityIndex: number; height: number }[] =
+      mp.getBitrateInfoListFor('video') || []
+    if (!list.length) return false
+    const exact = list.find((b) => b.height === height)
+    const target = exact ?? list.reduce(
+      (best, b) => (Math.abs(b.height - height) < Math.abs(best.height - height) ? b : best),
+      list[0],
+    )
+    mp.setQualityFor('video', target.qualityIndex, true)
+    return true
+  }
+  if (tryLock()) return
+  const mp: any = (player as any)?.dash?.mediaPlayer
+  if (mp?.on) {
+    const handler = () => {
+      tryLock()
+      mp.off?.('streamInitialized', handler)
+    }
+    mp.on('streamInitialized', handler)
+  }
+}
+
+// Each segment fetch needs the signed CloudFront cookie. dash.js can't set
+// cross-origin cookies from JS, so we intercept every request and rewrite
+// the URL to flow through `/api/proxy?cookie=…` instead. The injected
+// `<BaseURL>` in the manifest makes the URLs we see here absolute CDN URLs.
+const installDashRequestInterceptor = (cookie: string, referer?: string) => {
+  const mp: any = (player as any)?.dash?.mediaPlayer
+  if (!mp || typeof mp.addRequestInterceptor !== 'function') return
+  // Idempotent: dash.js doesn't expose a removal API, but addRequestInterceptor
+  // is keyed on identity. We tag the function so a second source change can
+  // skip re-adding.
+  if (mp.__rhCookieInterceptor === cookie) return
+  mp.__rhCookieInterceptor = cookie
+  mp.addRequestInterceptor((request: any) => {
+    const url: string = request.url || ''
+    // Don't double-wrap requests already pointed at our proxy (e.g. the
+    // manifest itself, which arrives through /api/dash-manifest).
+    if (url.includes('/api/proxy?') || url.includes('/api/dash-manifest?')) {
+      return Promise.resolve(request)
+    }
+    if (/^https?:\/\//.test(url)) {
+      request.url = proxiedUrl(url, referer, undefined, cookie)
+    }
+    return Promise.resolve(request)
+  })
+}
+
 const applySource = () => {
   if (!player || !finalSrc.value) return
   videoError.value = null
@@ -285,6 +374,13 @@ const applySource = () => {
   player.play()?.catch(() => {
     /* autoplay-blocked is fine; user can click play */
   })
+  if (sourceType.value === 'application/dash+xml') {
+    const q = activeQuality.value
+    if (q?.sign_cookie) {
+      installDashRequestInterceptor(q.sign_cookie, props.resolved?.play_referer)
+    }
+    if (q?.target_height) lockDashHeight(q.target_height)
+  }
 }
 
 const initPlayer = () => {

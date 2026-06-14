@@ -39,6 +39,7 @@ async function handleCdn(req, res, incoming) {
   const targetUrl = incoming.searchParams.get('url');
   const referer =
     incoming.searchParams.get('referer') || `https://${DEFAULT_UPSTREAM_HOST}/`;
+  const cookie = incoming.searchParams.get('cookie');
 
   if (!targetUrl) {
     res.writeHead(400, { 'content-type': 'application/json' });
@@ -77,6 +78,10 @@ async function handleCdn(req, res, incoming) {
   };
   // Forward Range so the player can seek.
   if (req.headers['range']) headers['Range'] = req.headers['range'];
+  // MovieBox DASH manifests + segments are CloudFront-signed-cookie-gated.
+  // The browser can't send cross-origin cookies via JS, so the caller passes
+  // the signed cookie string here and we attach it on the upstream fetch.
+  if (cookie) headers['Cookie'] = cookie;
 
   let upstream;
   try {
