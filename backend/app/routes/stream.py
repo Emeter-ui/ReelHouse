@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import re
 from typing import Any
 from urllib.parse import urlparse
 
@@ -639,6 +640,13 @@ async def _fetch_dash_streams(
         return []
     streams = raw.get("streams") or []
     out: list[dict[str, Any]] = []
+    # Series like Renegade Immortal report `resolutions="720,480"` on a manifest
+    # whose .mpd actually contains only one 480p representation — i.e. the
+    # resolutions field is a logical claim, not a real ladder. The MovieBox URL
+    # encodes the actual height in a `_NNN_h265` segment; prefer that when
+    # present, falling back to the MIN of resolutions so we label the rung at
+    # what the file really is (480p), not what MovieBox advertises (720p).
+    height_in_url = re.compile(r"_(\d{3,4})_h26[45]_")
     for s in streams:
         if (s.get("format") or "").lower() != "dash":
             continue
@@ -652,30 +660,29 @@ async def _fetch_dash_streams(
                 heights.append(int(tok))
         if not heights:
             continue
-        # File size is roughly linear in bitrate, which is roughly linear in
-        # height — split the manifest's total across variants ∝ height so the
-        # UI's "~MB" hint is in the right ballpark. The player only downloads
-        # the chosen variant; this is a display estimate, not an exact figure.
-        total = int(s.get("size") or 0)
-        h_sum = sum(heights) or 1
+
+        url_match = height_in_url.search(url)
+        if url_match:
+            target_h = int(url_match.group(1))
+        else:
+            target_h = min(heights)
         codec = (s.get("codecName") or "hevc").lower()
         # CloudFront signs the whole manifest tree with a Set-Cookie payload
         # that has to travel on every segment fetch. The browser can't set
         # cross-origin cookies via JS, so we hand the string to the client and
         # it routes manifest + segments through `/api/proxy?cookie=…`.
         sign_cookie = s.get("signCookie") or ""
-        for h in heights:
-            out.append(
-                {
-                    "resolution": f"{h}p",
-                    "size_bytes": int(total * h / h_sum) if total else 0,
-                    "url": url,
-                    "codec": codec,
-                    "format": "dash",
-                    "target_height": h,
-                    "sign_cookie": sign_cookie,
-                }
-            )
+        out.append(
+            {
+                "resolution": f"{target_h}p",
+                "size_bytes": int(s.get("size") or 0),
+                "url": url,
+                "codec": codec,
+                "format": "dash",
+                "target_height": target_h,
+                "sign_cookie": sign_cookie,
+            }
+        )
     logger.info(
         "[play-info] subject_id=%s se=%s ep=%s dash_variants=%d",
         subject_id, se, ep, len(out),

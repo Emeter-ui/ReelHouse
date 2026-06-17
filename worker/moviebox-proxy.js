@@ -141,6 +141,56 @@ async function handleMobile(request, env, url) {
   return new Response(upstream.body, { status: upstream.status, headers: corsAllowAll(respHeaders) });
 }
 
+// CDN hosts the worker is allowed to tunnel bytes for. Any URL outside
+// this list is rejected so the Worker isn't a generic open proxy.
+const ALLOWED_CDN_SUFFIX = '.hakunaymatata.com';
+
+async function handleCdn(request, env, url) {
+  const target = url.searchParams.get('url');
+  if (!target) return new Response('missing url', { status: 400 });
+  let parsed;
+  try { parsed = new URL(target); } catch { return new Response('bad url', { status: 400 }); }
+  if (!parsed.hostname.endsWith(ALLOWED_CDN_SUFFIX)) {
+    return new Response('host not allowed', { status: 400 });
+  }
+
+  const referer = url.searchParams.get('referer') || 'https://netfilm.world/';
+  const cookie = url.searchParams.get('cookie') || '';
+
+  const headers = {
+    'User-Agent': BROWSER_UA,
+    'Accept': '*/*',
+    'Accept-Encoding': 'identity',
+    'Referer': referer,
+    'Origin': new URL(referer).origin,
+  };
+  if (cookie) headers['Cookie'] = cookie;
+  // Forward Range so video seeking works end-to-end.
+  const range = request.headers.get('Range');
+  if (range) headers['Range'] = range;
+
+  const upstream = await fetch(target, {
+    method: request.method,
+    headers,
+  });
+
+  if (upstream.status >= 400) {
+    const bodyText = await upstream.clone().text().catch(() => '<unreadable>');
+    console.log(`CDN UPSTREAM ${upstream.status} body=${bodyText.slice(0, 300)}`);
+  }
+
+  // Pass through the headers that matter for video playback: content-type
+  // (so the browser picks the right decoder), content-range/length/accept-ranges
+  // (so seeking works), etag/last-modified (for caching).
+  const respHeaders = new Headers();
+  for (const name of ['content-type', 'content-range', 'content-length', 'accept-ranges', 'etag', 'last-modified']) {
+    const v = upstream.headers.get(name);
+    if (v) respHeaders.set(name, v);
+  }
+  respHeaders.set('Access-Control-Allow-Origin', '*');
+  return new Response(upstream.body, { status: upstream.status, headers: respHeaders });
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -149,6 +199,9 @@ export default {
       return new Response('unauthorized', { status: 401 });
     }
 
+    if (url.pathname === '/cdn') {
+      return handleCdn(request, env, url);
+    }
     if (url.pathname.startsWith('/wefeed-h5api-bff/')) {
       return handleH5(request, env, url);
     }

@@ -311,18 +311,23 @@ const syncCaptions = () => {
 // playable rendition with a `.enabled(bool)` switch. Enabling only the one
 // at `height` pins the chosen rung — VHS's ABR honours `enabled` and won't
 // drift away from the viewer's pick.
+//
+// Critical: if NO rep matches the target height (e.g. backend advertised a
+// 720p rung but the manifest only contains 480p), leave every rep enabled.
+// Disabling them all leaves the player with nothing to decode and surfaces
+// as MEDIA_ERR_SRC_NOT_SUPPORTED, which is wronger than letting it play a
+// near-match height.
 const lockDashHeight = (height: number) => {
   const tryLock = (): boolean => {
     const tech: any = (player as any)?.tech?.(true)
     const reps = tech?.vhs?.representations?.()
     if (!reps || !reps.length) return false
-    let matched = false
+    const matches = reps.filter((r: any) => r.height === height)
+    if (!matches.length) return false
     reps.forEach((r: any) => {
-      const enable = r.height === height
-      if (enable) matched = true
-      try { r.enabled?.(enable) } catch { /* some reps may be audio-only */ }
+      try { r.enabled?.(r.height === height) } catch { /* some reps may be audio-only */ }
     })
-    return matched
+    return true
   }
   if (tryLock()) return
   // Reps appear after VHS parses the manifest; loadedmetadata is the
@@ -481,6 +486,62 @@ watch(
   syncCaptions,
 )
 
+// --- Double-tap-to-seek (mobile) --------------------------------------------
+// YouTube-style: double-tap the left third → back 10s, right third → forward
+// 10s, middle → toggle play/pause. A single tap falls through to video.js so
+// the native controls still react.
+const seekHint = ref<{ dir: 'fwd' | 'rwd'; ts: number } | null>(null)
+let seekHintTimer: ReturnType<typeof setTimeout> | null = null
+let lastTap = { t: 0, x: 0, y: 0 }
+const DOUBLE_TAP_WINDOW_MS = 300
+const DOUBLE_TAP_SLOP_PX = 40
+
+const flashSeekHint = (dir: 'fwd' | 'rwd') => {
+  seekHint.value = { dir, ts: Date.now() }
+  if (seekHintTimer) clearTimeout(seekHintTimer)
+  seekHintTimer = setTimeout(() => { seekHint.value = null }, 600)
+}
+
+const handleVideoTouchEnd = (e: TouchEvent) => {
+  if (!player) return
+  // Multi-touch (pinch/zoom) — not a tap.
+  if (e.changedTouches.length !== 1) return
+  // Skip taps that landed on a video.js control — scrubber, play button,
+  // captions menu etc. should react normally without seeking the video.
+  const target = e.target as HTMLElement | null
+  if (target?.closest('.vjs-control-bar, .vjs-menu, .vjs-button')) return
+
+  const t = e.changedTouches[0]
+  const now = Date.now()
+  const dt = now - lastTap.t
+  const dx = Math.abs(t.clientX - lastTap.x)
+  const dy = Math.abs(t.clientY - lastTap.y)
+  if (dt < DOUBLE_TAP_WINDOW_MS && dx < DOUBLE_TAP_SLOP_PX && dy < DOUBLE_TAP_SLOP_PX) {
+    // Second tap → seek. Use the player's bounding box to split into thirds.
+    const playerEl = (player as any).el?.() as HTMLElement | undefined
+    const rect = (playerEl ?? (target as HTMLElement)).getBoundingClientRect()
+    const rel = (t.clientX - rect.left) / rect.width
+    const cur = player.currentTime() ?? 0
+    if (rel < 0.4) {
+      player.currentTime(Math.max(0, cur - 10))
+      flashSeekHint('rwd')
+    } else if (rel > 0.6) {
+      const dur = player.duration() ?? Infinity
+      player.currentTime(Math.min(dur, cur + 10))
+      flashSeekHint('fwd')
+    } else {
+      // Middle band → toggle play/pause.
+      if (player.paused()) player.play()?.catch(() => {})
+      else player.pause()
+    }
+    // Suppress the synthesized click so video.js doesn't also toggle play.
+    e.preventDefault()
+    lastTap = { t: 0, x: 0, y: 0 }
+    return
+  }
+  lastTap = { t: now, x: t.clientX, y: t.clientY }
+}
+
 const handleKeyDown = (e: KeyboardEvent) => {
   if (!player) return
   
@@ -582,13 +643,28 @@ onBeforeUnmount(() => {
     </div>
 
     <!-- video.js mounts inside this <video> element. crossOrigin propagates
-         to <track> requests so VTT subtitles load over CORS. -->
+         to <track> requests so VTT subtitles load over CORS.
+         The touch listener implements YouTube-style double-tap-to-seek;
+         a single tap bubbles to video.js (show/hide controls). -->
     <div v-show="finalSrc" class="absolute inset-0 w-full h-full">
       <video
         ref="videoElement"
         class="video-js vjs-default-skin vjs-big-play-centered w-full h-full"
         playsinline
+        @touchend="handleVideoTouchEnd"
       />
+    </div>
+
+    <!-- Seek hint pip (flashes on the side the user double-tapped). -->
+    <div
+      v-if="seekHint"
+      class="absolute inset-y-0 flex items-center justify-center pointer-events-none z-20"
+      :class="seekHint.dir === 'fwd' ? 'right-0 w-1/3' : 'left-0 w-1/3'"
+    >
+      <div class="flex flex-col items-center gap-1 px-4 py-3 rounded-full bg-black/60 text-white">
+        <span class="text-2xl">{{ seekHint.dir === 'fwd' ? '⏩' : '⏪' }}</span>
+        <span class="text-xs font-medium">10s</span>
+      </div>
     </div>
 
     <!-- UI Overlays (Chips) -->
