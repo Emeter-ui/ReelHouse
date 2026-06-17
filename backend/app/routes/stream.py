@@ -21,7 +21,7 @@ from moviebox_api.v3.constants import ResolutionType
 from moviebox_api.v3.core import DownloadableVideoFilesDetail, ItemDetails, Search
 from moviebox_api.v3.http_client import MovieBoxHttpClient
 from moviebox_api.v3.models.downloadables import VideoFileMetadata
-from moviebox_api.v3.urls import EXT_CAPTIONS_PATH, PLAY_INFO_PATH
+from moviebox_api.v3.urls import EXT_CAPTIONS_PATH, PLAY_INFO_PATH, SEASON_INFO_PATH
 
 from .. import fzmovies
 from ..cache import TTLCache
@@ -812,6 +812,38 @@ async def _fetch_all_video_files(
     return found
 
 
+async def _fetch_season_layout(
+    client: MovieBoxHttpClient, subject_id: str
+) -> dict[int, list[int]]:
+    """Authoritative season → episode-list map from MovieBox's season-info
+    endpoint. Used as a fallback for the structure builder when the resource
+    endpoint returns no files (whole-region 406 blocks have happened on Fly
+    Singapore, see moviebox_client.py).
+
+    season-info returns ``maxEp`` per season — the highest episode number, not
+    a list of gaps. We expand it as 1..maxEp; the structure aligner only cares
+    that the numbering is contiguous and matches what /stream/series will
+    accept, which it does (MovieBox numbers anime episodes contiguously from
+    1)."""
+    try:
+        raw = await client.get_from_api(
+            SEASON_INFO_PATH, params={"subjectId": subject_id}
+        )
+    except Exception as exc:
+        logger.warning(
+            "[season-info] subject_id=%s fetch failed: %s", subject_id, exc
+        )
+        return {}
+    out: dict[int, list[int]] = {}
+    for s in raw.get("seasons") or []:
+        se = s.get("se")
+        max_ep = s.get("maxEp") or 0
+        if not isinstance(se, int) or se < 1 or max_ep < 1:
+            continue
+        out[se] = list(range(1, max_ep + 1))
+    return out
+
+
 def _remap_global_episode(
     all_files: list[VideoFileMetadata],
     requested_season: int,
@@ -1273,6 +1305,14 @@ async def series_structure(
         eps = season_map.setdefault(f.season, [])
         if f.episode not in eps:
             eps.append(f.episode)
+
+    # Fallback: if the resource endpoint returned no files (region 406, upstream
+    # outage, etc.), pull the season layout from the season-info endpoint
+    # instead. We still know maxEp per season, which is what the structure
+    # builder needs to render the picker.
+    if not season_map:
+        async with make_client() as client:
+            season_map = await _fetch_season_layout(client, target_subject_id)
     if not season_map:
         raise HTTPException(status_code=404, detail={"error": "no_episodes"})
 
