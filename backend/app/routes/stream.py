@@ -36,11 +36,14 @@ logger = logging.getLogger(__name__)
 # request as bot traffic from the (datacenter) backend host.
 _IMPERSONATE = "chrome124"
 
-# Cloudflare Worker that fronts the H5 play domain. MovieBox IP-blocks our
-# Render egress on this domain; Worker runs on Cloudflare IPs and forwards
-# with the Referer + uuid cookie MovieBox needs. When unset, we hit MovieBox
-# directly (works in local dev where the host isn't blocked).
-_PROXY_BASE = os.environ.get("MOVIEBOX_PROXY_URL", "").rstrip("/")
+# Fly's Mumbai (`bom`) egress IP is not flagged by MovieBox, so we hit the
+# H5 play domain directly from the backend. The Cloudflare Worker is no
+# longer in the H5 path — it stays in service only for CDN byte tunneling
+# (handled by proxy.py), which IS still blocked on Fly.
+#
+# Keeping these vars + the proxy-dispatch logic in place so it's a one-line
+# revert if a future region change re-introduces an upstream block.
+_PROXY_BASE = os.environ.get("MOVIEBOX_H5_PROXY_URL", "").rstrip("/")
 _PROXY_SECRET = os.environ.get("MOVIEBOX_PROXY_SECRET", "")
 
 router = APIRouter()

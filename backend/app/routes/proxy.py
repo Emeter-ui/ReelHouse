@@ -45,7 +45,12 @@ PASS_THROUGH_RESPONSE_HEADERS = {
     "cache-control",
 }
 
-# Fly Singapore proxy that fronts hakunaymatata bytes for us.
+# Cloudflare Worker that tunnels hakunaymatata.com CDN bytes for us. The
+# CDN IP-blocks Fly's egress even with the right Referer, so manifest +
+# segment + MP4 fetches have to detour through a non-Fly host. The Worker
+# is on CF's IPs, which the CDN trusts. Configured by `MOVIEBOX_PROXY_URL`
+# (the only purpose this env var still serves — H5 and mobile-bff API
+# calls now go direct from Fly).
 _FLY_PROXY_BASE = os.environ.get("MOVIEBOX_PROXY_URL", "").rstrip("/")
 _FLY_PROXY_SECRET = os.environ.get("MOVIEBOX_PROXY_SECRET", "")
 _FLY_TUNNELED_HOST_SUFFIX = ".hakunaymatata.com"

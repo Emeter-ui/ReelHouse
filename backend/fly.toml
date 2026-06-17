@@ -2,7 +2,7 @@
 # Deployed from the backend/ directory: `fly deploy` (run inside backend/).
 
 app = 'reelhouse-backend'
-primary_region = 'sin'
+primary_region = 'bom'
 
 [build]
 
