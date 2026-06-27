@@ -1,0 +1,67 @@
+[
+  {
+    "lan": "en",
+    "lanIOS3": "eng",
+    "lanName": "English"
+  },
+  {
+    "lan": "hi",
+    "lanIOS3": "hin",
+    "lanName": "हिन्दी"
+  },
+  {
+    "lan": "fr",
+    "lanIOS3": "fre",
+    "lanName": "Français"
+  },
+  {
+    "lan": "in_id",
+    "lanIOS3": "ind",
+    "lanName": "Indonesia"
+  },
+  {
+    "lan": "pt",
+    "lanIOS3": "por",
+    "lanName": "Português"
+  },
+  {
+    "lan": "ar",
+    "lanIOS3": "ara",
+    "lanName": "عربي"
+  },
+  {
+    "lan": "ur",
+    "lanIOS3": "urd",
+    "lanName": "اردو"
+  },
+  {
+    "lan": "bn",
+    "lanIOS3": "ben",
+    "lanName": "বাংলা"
+  },
+  {
+    "lan": "pa",
+    "lanIOS3": "pan",
+    "lanName": "ਪੰਜਾਬੀ"
+  },
+  {
+    "lan": "ha",
+    "lanIOS3": "hau",
+    "lanName": "Hausa"
+  },
+  {
+    "lan": "sw",
+    "lanIOS3": "swa",
+    "lanName": "Kiswahili"
+  },
+  {
+    "lan": "zh",
+    "lanIOS3": "chi",
+    "lanName": "中文(简体)"
+  },
+  {
+    "lan": "ru",
+    "lanIOS3": "rus",
+    "lanName": "Русский"
+  }
+]

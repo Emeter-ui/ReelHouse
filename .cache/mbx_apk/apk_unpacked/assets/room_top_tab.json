@@ -1,0 +1,27 @@
+{
+  "defTabId": "explore",
+  "version": "2493811379",
+  "items": [
+    {
+      "tabId": "explore",
+      "name": "Explore",
+      "type": "post",
+      "url": "",
+      "badge": null
+    },
+    {
+      "tabId": "images",
+      "name": "Images",
+      "type": "post",
+      "url": "",
+      "badge": null
+    },
+    {
+      "tabId": "nearby",
+      "name": "Nearby",
+      "type": "post",
+      "url": "",
+      "badge": null
+    }
+  ]
+}

@@ -20,6 +20,7 @@ from moviebox_api.v3.models.downloadables import VideoFileMetadata
 from moviebox_api.v3.urls import PLAY_INFO_PATH, RESOURCE_PATH
 
 from ..matching import Candidate, best_match
+from ..moviebox_client import make_client
 
 
 # MovieBox caps per_page at 20, so a long-running series spans many pages.
@@ -143,7 +144,7 @@ async def moviebox_probe(
     detail_path: str | None = None
     async def check_search():
         nonlocal subject_id, detail_path
-        async with MovieBoxHttpClient() as client:
+        async with make_client() as client:
             search = Search(
                 client_session=client, query=title, subject_type=SubjectType.MOVIES
             )
@@ -173,7 +174,7 @@ async def moviebox_probe(
     # 3) Mobile-bff item-details (signed GET) — same auth surface as search.
     if subject_id:
         async def check_details():
-            async with MovieBoxHttpClient() as client:
+            async with make_client() as client:
                 d = await ItemDetails(client_session=client).get_content_model(subject_id)
                 return {
                     "title": d.title,
@@ -184,7 +185,7 @@ async def moviebox_probe(
 
         # 4) Mobile-bff resource (signed) — what /stream uses for download_qualities.
         async def check_resource():
-            async with MovieBoxHttpClient() as client:
+            async with make_client() as client:
                 downloads = DownloadableVideoFilesDetail(
                     client_session=client, resolution=ResolutionType.UNSPECIFIED
                 )
@@ -253,7 +254,7 @@ async def play_params(
         parts = [p for p in urlparse(url).path.split("/") if p]
         return parts[-1] if parts else None
 
-    async with MovieBoxHttpClient() as client:
+    async with make_client() as client:
         # Search → match
         search = Search(
             client_session=client, query=title, subject_type=SubjectType.MOVIES
@@ -325,7 +326,7 @@ async def full_resource(
     subject_id: str = Query(...),
 ) -> dict[str, Any]:
     """Walk all pages with resolution=0 and dump every (season, episode, resolution)."""
-    async with MovieBoxHttpClient() as client:
+    async with make_client() as client:
         all_items: list[dict[str, Any]] = []
         page = 1
         while page <= 50:
@@ -368,7 +369,7 @@ async def play_info_sweep(
     episodes: str = Query("1,2,3,4,5,6,7,8", description="Comma-separated episode numbers"),
 ) -> dict[str, Any]:
     """Hit play-info for each episode in the list and report what's available."""
-    async with MovieBoxHttpClient() as client:
+    async with make_client() as client:
         results: list[dict[str, Any]] = []
         for ep_str in episodes.split(","):
             ep = int(ep_str.strip())
@@ -398,7 +399,7 @@ async def probe_episode(
 ) -> dict[str, Any]:
     """Probe the raw resource endpoint with several param combos to see which
     (if any) returns files for episodes missing from the bulk paginated listing."""
-    async with MovieBoxHttpClient() as client:
+    async with make_client() as client:
         attempts: list[dict[str, Any]] = []
 
         async def try_params(label: str, params: dict[str, Any]) -> None:
@@ -477,7 +478,7 @@ async def debug_series(
     year: int | None = Query(default=None),
     season: int | None = Query(default=None, description="Optional: filter dump to this season"),
 ) -> dict[str, Any]:
-    async with MovieBoxHttpClient() as client:
+    async with make_client() as client:
         search = Search(client_session=client, query=title, subject_type=SubjectType.TV_SERIES)
         try:
             search_result = await search.get_content_model()

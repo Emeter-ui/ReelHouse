@@ -57,9 +57,24 @@ const results = computed(() =>
 const localQ = ref(q.value)
 watch(q, (v) => (localQ.value = v))
 
+const { items: recentSearches, add: recordSearch, remove: removeRecent, clear: clearRecents } =
+  useSearchHistory()
+
+// Record any non-empty `?q=...` we navigate to — covers form submit, header
+// submit, shared links, and back/forward (dedupe handles the noise).
+watch(q, (v) => {
+  if (v?.trim()) recordSearch(v.trim())
+}, { immediate: true })
+
 const submit = () => {
-  if (!localQ.value.trim()) return
-  router.replace(`/search?q=${encodeURIComponent(localQ.value.trim())}`)
+  const term = localQ.value.trim()
+  if (!term) return
+  router.replace(`/search?q=${encodeURIComponent(term)}`)
+}
+
+const useRecent = (term: string) => {
+  localQ.value = term
+  router.replace(`/search?q=${encodeURIComponent(term)}`)
 }
 
 const yearOf = (i: SearchItem) => {
@@ -88,7 +103,39 @@ const typeOf = (i: SearchItem): 'movie' | 'series' =>
       <CategoryFilter v-model="filter" :options="filterOptions" />
     </div>
 
-    <div v-if="!q" class="text-slate-400 py-12 text-center">Type something to search.</div>
+    <div v-if="!q">
+      <div v-if="recentSearches.length" class="max-w-xl">
+        <div class="flex items-center justify-between mb-3">
+          <span class="text-xs uppercase tracking-widest font-bold text-slate-500">Recent searches</span>
+          <button
+            type="button"
+            class="text-xs uppercase tracking-widest font-bold text-slate-500 hover:text-accent transition-colors"
+            @click="clearRecents()"
+          >Clear all</button>
+        </div>
+        <ul class="flex flex-wrap gap-2">
+          <li v-for="term in recentSearches" :key="term" class="flex items-stretch rounded-full bg-white/5 ring-1 ring-white/10 hover:ring-accent/40 transition">
+            <button
+              type="button"
+              class="pl-4 pr-2 py-1.5 text-sm text-slate-200"
+              @click="useRecent(term)"
+            >{{ term }}</button>
+            <button
+              type="button"
+              class="pr-3 pl-1 py-1.5 text-slate-500 hover:text-slate-200 transition-colors"
+              :aria-label="`Remove ${term} from recent searches`"
+              @click="removeRecent(term)"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="w-3 h-3">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          </li>
+        </ul>
+      </div>
+      <div v-else class="text-slate-400 py-12 text-center">Type something to search.</div>
+    </div>
     <div v-else-if="pending && !data" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
       <div v-for="i in 10" :key="i" class="aspect-[2/3] rounded-lg bg-white/5 animate-pulse" />
     </div>

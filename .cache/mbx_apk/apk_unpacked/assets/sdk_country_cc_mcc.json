@@ -1,0 +1,1142 @@
+[
+  {
+    "cn": "Afghanistan",
+    "alpha2": "AF",
+    "pcc": "93",
+    "mcc": "412"
+  },
+  {
+    "cn": "Albania",
+    "alpha2": "AL",
+    "pcc": "355",
+    "mcc": "276"
+  },
+  {
+    "cn": "Algeria",
+    "alpha2": "DZ",
+    "pcc": "213",
+    "mcc": "603"
+  },
+  {
+    "cn": "America",
+    "alpha2": "US",
+    "pcc": "1",
+    "mcc": "302"
+  },
+  {
+    "cn": "Andorra",
+    "alpha2": "AD",
+    "pcc": "376",
+    "mcc": "213"
+  },
+  {
+    "cn": "Angola",
+    "alpha2": "AO",
+    "pcc": "244",
+    "mcc": "631"
+  },
+  {
+    "cn": "Anguilla",
+    "alpha2": "AI",
+    "pcc": "1264",
+    "mcc": "365"
+  },
+  {
+    "cn": "Antigua and Barbuda",
+    "alpha2": "AG",
+    "pcc": "1268",
+    "mcc": "344"
+  },
+  {
+    "cn": "Argentina",
+    "alpha2": "AR",
+    "pcc": "54",
+    "mcc": "722"
+  },
+  {
+    "cn": "Armenia",
+    "alpha2": "AM",
+    "pcc": "374",
+    "mcc": "283"
+  },
+  {
+    "cn": "Australia",
+    "alpha2": "AU",
+    "pcc": "61",
+    "mcc": "505"
+  },
+  {
+    "cn": "Austria",
+    "alpha2": "AT",
+    "pcc": "43",
+    "mcc": "232"
+  },
+  {
+    "cn": "Azerbaijan",
+    "alpha2": "AZ",
+    "pcc": "994",
+    "mcc": "400"
+  },
+  {
+    "cn": "Bahamas",
+    "alpha2": "BS",
+    "pcc": "1242",
+    "mcc": "364"
+  },
+  {
+    "cn": "Bahrain",
+    "alpha2": "BH",
+    "pcc": "973",
+    "mcc": "426"
+  },
+  {
+    "cn": "Bangladesh",
+    "alpha2": "BD",
+    "pcc": "880",
+    "mcc": "470"
+  },
+  {
+    "cn": "Barbados",
+    "alpha2": "BB",
+    "pcc": "1246",
+    "mcc": "342"
+  },
+  {
+    "cn": "Belarus",
+    "alpha2": "BY",
+    "pcc": "375",
+    "mcc": "257"
+  },
+  {
+    "cn": "Belgium",
+    "alpha2": "BE",
+    "pcc": "32",
+    "mcc": "206"
+  },
+  {
+    "cn": "Belize",
+    "alpha2": "BZ",
+    "pcc": "501",
+    "mcc": "702"
+  },
+  {
+    "cn": "Benin",
+    "alpha2": "BJ",
+    "pcc": "229",
+    "mcc": "616"
+  },
+  {
+    "cn": "Bermuda Is.",
+    "alpha2": "BM",
+    "pcc": "1441",
+    "mcc": "350"
+  },
+  {
+    "cn": "Bolivia",
+    "alpha2": "BO",
+    "pcc": "591",
+    "mcc": "736"
+  },
+  {
+    "cn": "Botswana",
+    "alpha2": "BW",
+    "pcc": "267",
+    "mcc": "652"
+  },
+  {
+    "cn": "Brazil",
+    "alpha2": "BR",
+    "pcc": "55",
+    "mcc": "724"
+  },
+  {
+    "cn": "Brunei",
+    "alpha2": "BN",
+    "pcc": "673",
+    "mcc": "528"
+  },
+  {
+    "cn": "Bulgaria",
+    "alpha2": "BG",
+    "pcc": "359",
+    "mcc": "284"
+  },
+  {
+    "cn": "Burkina-faso",
+    "alpha2": "BF",
+    "pcc": "226",
+    "mcc": "613"
+  },
+  {
+    "cn": "Burma",
+    "alpha2": "MM",
+    "pcc": "95",
+    "mcc": "414"
+  },
+  {
+    "cn": "Burundi",
+    "alpha2": "BI",
+    "pcc": "257",
+    "mcc": "642"
+  },
+  {
+    "cn": "Hong Kong (SAR China)",
+    "alpha2": "HK",
+    "pcc": "852",
+    "mcc": "454"
+  },
+  {
+    "cn": "Macau (SAR China)",
+    "alpha2": "MO",
+    "pcc": "853",
+    "mcc": "455"
+  },
+  {
+    "cn": "Taiwan",
+    "alpha2": "TW",
+    "pcc": "886",
+    "mcc": "466"
+  },
+  {
+    "cn": "Cameroon",
+    "alpha2": "CM",
+    "pcc": "237",
+    "mcc": "624"
+  },
+  {
+    "cn": "Canada",
+    "alpha2": "CA",
+    "pcc": "1",
+    "mcc": "302"
+  },
+  {
+    "cn": "Cape Verde",
+    "alpha2": "CV",
+    "pcc": "238",
+    "mcc": "625"
+  },
+  {
+    "cn": "Central African Republic",
+    "alpha2": "CF",
+    "pcc": "236",
+    "mcc": "623"
+  },
+  {
+    "cn": "Chad",
+    "alpha2": "TD",
+    "pcc": "235",
+    "mcc": "622"
+  },
+  {
+    "cn": "Chile",
+    "alpha2": "CL",
+    "pcc": "56",
+    "mcc": "730"
+  },
+  {
+    "cn": "China",
+    "alpha2": "CN",
+    "pcc": "86",
+    "mcc": "460"
+  },
+  {
+    "cn": "Colombia",
+    "alpha2": "CO",
+    "pcc": "57",
+    "mcc": "732"
+  },
+  {
+    "cn": "Congo Brazzaville",
+    "alpha2": "CG",
+    "pcc": "242",
+    "mcc": "629"
+  },
+  {
+    "cn": "Cook Is.",
+    "alpha2": "CK",
+    "pcc": "682",
+    "mcc": "548"
+  },
+  {
+    "cn": "Costa Rica",
+    "alpha2": "CR",
+    "pcc": "506",
+    "mcc": "712"
+  },
+  {
+    "cn": "Cuba",
+    "alpha2": "CU",
+    "pcc": "53",
+    "mcc": "368"
+  },
+  {
+    "cn": "Cyprus",
+    "alpha2": "CY",
+    "pcc": "357",
+    "mcc": "280"
+  },
+  {
+    "cn": "Czech Republic",
+    "alpha2": "CZ",
+    "pcc": "420",
+    "mcc": "230"
+  },
+  {
+    "cn": "Denmark",
+    "alpha2": "DK",
+    "pcc": "45",
+    "mcc": "238"
+  },
+  {
+    "cn": "Djibouti",
+    "alpha2": "DJ",
+    "pcc": "253",
+    "mcc": "638"
+  },
+  {
+    "cn": "Dominican Republic",
+    "alpha2": "DO",
+    "pcc": "1809",
+    "mcc": "370"
+  },
+  {
+    "cn": "DR Congo",
+    "alpha2": "CD",
+    "pcc": "243",
+    "mcc": "630"
+  },
+  {
+    "cn": "EI Salvador",
+    "alpha2": "SV",
+    "pcc": "503",
+    "mcc": "706"
+  },
+  {
+    "cn": "Ecuador",
+    "alpha2": "EC",
+    "pcc": "593",
+    "mcc": "740"
+  },
+  {
+    "cn": "Egypt",
+    "alpha2": "EG",
+    "pcc": "20",
+    "mcc": "602"
+  },
+  {
+    "cn": "Equatorial Guinea",
+    "alpha2": "GQ",
+    "pcc": "240",
+    "mcc": "627"
+  },
+  {
+    "cn": "Estonia",
+    "alpha2": "EE",
+    "pcc": "372",
+    "mcc": "248"
+  },
+  {
+    "cn": "Ethiopia",
+    "alpha2": "ET",
+    "pcc": "251",
+    "mcc": "636"
+  },
+  {
+    "cn": "Fiji",
+    "alpha2": "FJ",
+    "pcc": "679",
+    "mcc": "542"
+  },
+  {
+    "cn": "Finland",
+    "alpha2": "FI",
+    "pcc": "358",
+    "mcc": "244"
+  },
+  {
+    "cn": "France",
+    "alpha2": "FR",
+    "pcc": "33",
+    "mcc": "208"
+  },
+  {
+    "cn": "French Guiana",
+    "alpha2": "GF",
+    "pcc": "594",
+    "mcc": "340"
+  },
+  {
+    "cn": "French Polynesia",
+    "alpha2": "PF",
+    "pcc": "689",
+    "mcc": "547"
+  },
+  {
+    "cn": "Gabon",
+    "alpha2": "GA",
+    "pcc": "241",
+    "mcc": "628"
+  },
+  {
+    "cn": "Gambia",
+    "alpha2": "GM",
+    "pcc": "220",
+    "mcc": "607"
+  },
+  {
+    "cn": "Georgia",
+    "alpha2": "GE",
+    "pcc": "995",
+    "mcc": "282"
+  },
+  {
+    "cn": "Germany",
+    "alpha2": "DE",
+    "pcc": "49",
+    "mcc": "262"
+  },
+  {
+    "cn": "Ghana",
+    "alpha2": "GH",
+    "pcc": "233",
+    "mcc": "620"
+  },
+  {
+    "cn": "Gibraltar",
+    "alpha2": "GI",
+    "pcc": "350",
+    "mcc": "266"
+  },
+  {
+    "cn": "Greece",
+    "alpha2": "GR",
+    "pcc": "30",
+    "mcc": "202"
+  },
+  {
+    "cn": "Grenada",
+    "alpha2": "GD",
+    "pcc": "1473",
+    "mcc": "352"
+  },
+  {
+    "cn": "Guam",
+    "alpha2": "GU",
+    "pcc": "1671",
+    "mcc": "310"
+  },
+  {
+    "cn": "Guatemala",
+    "alpha2": "GT",
+    "pcc": "502",
+    "mcc": "704"
+  },
+  {
+    "cn": "Guinea",
+    "alpha2": "GN",
+    "pcc": "224",
+    "mcc": "611"
+  },
+  {
+    "cn": "Guinea Bissau",
+    "alpha2": "GNB",
+    "pcc": "245",
+    "mcc": "632"
+  },
+  {
+    "cn": "Guyana",
+    "alpha2": "GY",
+    "pcc": "592",
+    "mcc": "738"
+  },
+  {
+    "cn": "Haiti",
+    "alpha2": "HT",
+    "pcc": "509",
+    "mcc": "372"
+  },
+  {
+    "cn": "Honduras",
+    "alpha2": "HN",
+    "pcc": "504",
+    "mcc": "708"
+  },
+  {
+    "cn": "Hungary",
+    "alpha2": "HU",
+    "pcc": "36",
+    "mcc": "216"
+  },
+  {
+    "cn": "Iceland",
+    "alpha2": "IS",
+    "pcc": "354",
+    "mcc": "274"
+  },
+  {
+    "cn": "India",
+    "alpha2": "IN",
+    "pcc": "91",
+    "mcc": "404"
+  },
+  {
+    "cn": "Indonesia",
+    "alpha2": "ID",
+    "pcc": "62",
+    "mcc": "510"
+  },
+  {
+    "cn": "Iran",
+    "alpha2": "IR",
+    "pcc": "98",
+    "mcc": "432"
+  },
+  {
+    "cn": "Iraq",
+    "alpha2": "IQ",
+    "pcc": "964",
+    "mcc": "418"
+  },
+  {
+    "cn": "Ireland",
+    "alpha2": "IE",
+    "pcc": "353",
+    "mcc": "272"
+  },
+  {
+    "cn": "Israel",
+    "alpha2": "IL",
+    "pcc": "972",
+    "mcc": "425"
+  },
+  {
+    "cn": "Italy",
+    "alpha2": "IT",
+    "pcc": "39",
+    "mcc": "222"
+  },
+  {
+    "cn": "Jamaica",
+    "alpha2": "JM",
+    "pcc": "1876",
+    "mcc": "338"
+  },
+  {
+    "cn": "Japan",
+    "alpha2": "JP",
+    "pcc": "81",
+    "mcc": "440"
+  },
+  {
+    "cn": "Jordan",
+    "alpha2": "JO",
+    "pcc": "962",
+    "mcc": "416"
+  },
+  {
+    "cn": "Kampuchea",
+    "alpha2": "KH",
+    "pcc": "855",
+    "mcc": "456"
+  },
+  {
+    "cn": "Kazakstan",
+    "alpha2": "KZ",
+    "pcc": "7",
+    "mcc": "289"
+  },
+  {
+    "cn": "Kenya",
+    "alpha2": "KE",
+    "pcc": "254",
+    "mcc": "639"
+  },
+  {
+    "cn": "Korea",
+    "alpha2": "KR",
+    "pcc": "82",
+    "mcc": "450"
+  },
+  {
+    "cn": "Kuwait",
+    "alpha2": "KW",
+    "pcc": "965",
+    "mcc": "419"
+  },
+  {
+    "cn": "Kyrgyzstan",
+    "alpha2": "KG",
+    "pcc": "996",
+    "mcc": "437"
+  },
+  {
+    "cn": "Laos",
+    "alpha2": "LA",
+    "pcc": "856",
+    "mcc": "457"
+  },
+  {
+    "cn": "Latvia",
+    "alpha2": "LV",
+    "pcc": "371",
+    "mcc": "247"
+  },
+  {
+    "cn": "Lebanon",
+    "alpha2": "LB",
+    "pcc": "961",
+    "mcc": "415"
+  },
+  {
+    "cn": "Lesotho",
+    "alpha2": "LS",
+    "pcc": "266",
+    "mcc": "651"
+  },
+  {
+    "cn": "Liberia",
+    "alpha2": "LR",
+    "pcc": "231",
+    "mcc": "618"
+  },
+  {
+    "cn": "Libya",
+    "alpha2": "LY",
+    "pcc": "218",
+    "mcc": "606"
+  },
+  {
+    "cn": "Liechtenstein",
+    "alpha2": "LI",
+    "pcc": "423",
+    "mcc": "295"
+  },
+  {
+    "cn": "Lithuania",
+    "alpha2": "LT",
+    "pcc": "370",
+    "mcc": "246"
+  },
+  {
+    "cn": "Luxembourg",
+    "alpha2": "LU",
+    "pcc": "352",
+    "mcc": "270"
+  },
+  {
+    "cn": "Madagascar",
+    "alpha2": "MG",
+    "pcc": "261",
+    "mcc": "646"
+  },
+  {
+    "cn": "Malawi",
+    "alpha2": "MW",
+    "pcc": "265",
+    "mcc": "650"
+  },
+  {
+    "cn": "Malaysia",
+    "alpha2": "MY",
+    "pcc": "60",
+    "mcc": "502"
+  },
+  {
+    "cn": "Maldives",
+    "alpha2": "MV",
+    "pcc": "960",
+    "mcc": "472"
+  },
+  {
+    "cn": "Mali",
+    "alpha2": "ML",
+    "pcc": "223",
+    "mcc": "610"
+  },
+  {
+    "cn": "Malta",
+    "alpha2": "MT",
+    "pcc": "356",
+    "mcc": "278"
+  },
+  {
+    "cn": "Mauritania",
+    "alpha2": "MR",
+    "pcc": "222",
+    "mcc": "609"
+  },
+  {
+    "cn": "Mauritius",
+    "alpha2": "MU",
+    "pcc": "230",
+    "mcc": "617"
+  },
+  {
+    "cn": "Mayotte",
+    "alpha2": "YT",
+    "pcc": "262",
+    "mcc": "647"
+  },
+  {
+    "cn": "Mexico",
+    "alpha2": "MX",
+    "pcc": "52",
+    "mcc": "334"
+  },
+  {
+    "cn": "Moldova",
+    "alpha2": "MD",
+    "pcc": "373",
+    "mcc": "259"
+  },
+  {
+    "cn": "Monaco",
+    "alpha2": "MC",
+    "pcc": "377",
+    "mcc": "212"
+  },
+  {
+    "cn": "Mongolia",
+    "alpha2": "MN",
+    "pcc": "976",
+    "mcc": "428"
+  },
+  {
+    "cn": "Montserrat Is",
+    "alpha2": "MS",
+    "pcc": "1664",
+    "mcc": "354"
+  },
+  {
+    "cn": "Morocco",
+    "alpha2": "MA",
+    "pcc": "212",
+    "mcc": "604"
+  },
+  {
+    "cn": "Mozambique",
+    "alpha2": "MZ",
+    "pcc": "258",
+    "mcc": "643"
+  },
+  {
+    "cn": "Namibia",
+    "alpha2": "NA",
+    "pcc": "264",
+    "mcc": "649"
+  },
+  {
+    "cn": "Nauru",
+    "alpha2": "NR",
+    "pcc": "674",
+    "mcc": "536"
+  },
+  {
+    "cn": "Nepal",
+    "alpha2": "NP",
+    "pcc": "977",
+    "mcc": "429"
+  },
+  {
+    "cn": "Netherlands",
+    "alpha2": "NL",
+    "pcc": "31",
+    "mcc": "204"
+  },
+  {
+    "cn": "New Zealand",
+    "alpha2": "NZ",
+    "pcc": "64",
+    "mcc": "530"
+  },
+  {
+    "cn": "Nicaragua",
+    "alpha2": "NI",
+    "pcc": "505",
+    "mcc": "710"
+  },
+  {
+    "cn": "Niger",
+    "alpha2": "NE",
+    "pcc": "227",
+    "mcc": "614"
+  },
+  {
+    "cn": "Nigeria",
+    "alpha2": "NG",
+    "pcc": "234",
+    "mcc": "621"
+  },
+  {
+    "cn": "North Korea",
+    "alpha2": "KP",
+    "pcc": "850",
+    "mcc": "467"
+  },
+  {
+    "cn": "Norway",
+    "alpha2": "NO",
+    "pcc": "47",
+    "mcc": "242"
+  },
+  {
+    "cn": "Oman",
+    "alpha2": "OM",
+    "pcc": "968",
+    "mcc": "422"
+  },
+  {
+    "cn": "Pakistan",
+    "alpha2": "PK",
+    "pcc": "92",
+    "mcc": "410"
+  },
+  {
+    "cn": "Palestine",
+    "alpha2": "PS",
+    "pcc": "970",
+    "mcc": "425"
+  },
+  {
+    "cn": "Panama",
+    "alpha2": "PA",
+    "pcc": "507",
+    "mcc": "714"
+  },
+  {
+    "cn": "Papua New Guinea",
+    "alpha2": "PG",
+    "pcc": "675",
+    "mcc": "537"
+  },
+  {
+    "cn": "Paraguay",
+    "alpha2": "PY",
+    "pcc": "595",
+    "mcc": "744"
+  },
+  {
+    "cn": "Peru",
+    "alpha2": "PE",
+    "pcc": "51",
+    "mcc": "716"
+  },
+  {
+    "cn": "Philippines",
+    "alpha2": "PH",
+    "pcc": "63",
+    "mcc": "515"
+  },
+  {
+    "cn": "Poland",
+    "alpha2": "PL",
+    "pcc": "48",
+    "mcc": "260"
+  },
+  {
+    "cn": "Portugal",
+    "alpha2": "PT",
+    "pcc": "351",
+    "mcc": "268"
+  },
+  {
+    "cn": "Puerto Rico",
+    "alpha2": "PR",
+    "pcc": "1787",
+    "mcc": "330"
+  },
+  {
+    "cn": "Qatar",
+    "alpha2": "QA",
+    "pcc": "974",
+    "mcc": "427"
+  },
+  {
+    "cn": "Côte d'Ivoire",
+    "alpha2": "CI",
+    "pcc": "225",
+    "mcc": "612"
+  },
+  {
+    "cn": "Romania",
+    "alpha2": "RO",
+    "pcc": "40",
+    "mcc": "226"
+  },
+  {
+    "cn": "Russia",
+    "alpha2": "RU",
+    "pcc": "7",
+    "mcc": "289"
+  },
+  {
+    "cn": "Rwanda",
+    "alpha2": "RW",
+    "pcc": "250",
+    "mcc": "635"
+  },
+  {
+    "cn": "Saint Vincent",
+    "alpha2": "BL",
+    "pcc": "1784",
+    "mcc": "360"
+  },
+  {
+    "cn": "San Marino",
+    "alpha2": "SM",
+    "pcc": "378",
+    "mcc": "292"
+  },
+  {
+    "cn": "Sao Tome and Principe",
+    "alpha2": "ST",
+    "pcc": "239",
+    "mcc": "626"
+  },
+  {
+    "cn": "Saudi Arabia",
+    "alpha2": "SA",
+    "pcc": "966",
+    "mcc": "420"
+  },
+  {
+    "cn": "Senegal",
+    "alpha2": "SN",
+    "pcc": "221",
+    "mcc": "608"
+  },
+  {
+    "cn": "Seychelles",
+    "alpha2": "SC",
+    "pcc": "248",
+    "mcc": "633"
+  },
+  {
+    "cn": "Sierra Leone",
+    "alpha2": "SL",
+    "pcc": "232",
+    "mcc": "619"
+  },
+  {
+    "cn": "Singapore",
+    "alpha2": "SG",
+    "pcc": "65",
+    "mcc": "525"
+  },
+  {
+    "cn": "Slovakia",
+    "alpha2": "SK",
+    "pcc": "421",
+    "mcc": "231"
+  },
+  {
+    "cn": "Slovenia",
+    "alpha2": "SI",
+    "pcc": "386",
+    "mcc": "293"
+  },
+  {
+    "cn": "Solomon Is",
+    "alpha2": "SB",
+    "pcc": "677",
+    "mcc": "540"
+  },
+  {
+    "cn": "Somali",
+    "alpha2": "SO",
+    "pcc": "252",
+    "mcc": "637"
+  },
+  {
+    "cn": "South Africa",
+    "alpha2": "ZA",
+    "pcc": "27",
+    "mcc": "655"
+  },
+  {
+    "cn": "South Sudan",
+    "alpha2": "SS",
+    "pcc": "211",
+    "mcc": "659"
+  },
+  {
+    "cn": "Spain",
+    "alpha2": "ES",
+    "pcc": "34",
+    "mcc": "214"
+  },
+  {
+    "cn": "Sri Lanka",
+    "alpha2": "LK",
+    "pcc": "94",
+    "mcc": "413"
+  },
+  {
+    "cn": "St.Lucia",
+    "alpha2": "LC",
+    "pcc": "1758",
+    "mcc": "358"
+  },
+  {
+    "cn": "Sudan",
+    "alpha2": "SD",
+    "pcc": "249",
+    "mcc": "634"
+  },
+  {
+    "cn": "Suriname",
+    "alpha2": "SR",
+    "pcc": "597",
+    "mcc": "746"
+  },
+  {
+    "cn": "Swaziland",
+    "alpha2": "CH",
+    "pcc": "268",
+    "mcc": "653"
+  },
+  {
+    "cn": "Sweden",
+    "alpha2": "SE",
+    "pcc": "46",
+    "mcc": "240"
+  },
+  {
+    "cn": "Switzerland",
+    "alpha2": "CH",
+    "pcc": "41",
+    "mcc": "228"
+  },
+  {
+    "cn": "Syria",
+    "alpha2": "SY",
+    "pcc": "963",
+    "mcc": "417"
+  },
+  {
+    "cn": "Tajikistan",
+    "alpha2": "TJ",
+    "pcc": "992",
+    "mcc": "436"
+  },
+  {
+    "cn": "Tanzania",
+    "alpha2": "TZ",
+    "pcc": "255",
+    "mcc": "640"
+  },
+  {
+    "cn": "Thailand",
+    "alpha2": "TH",
+    "pcc": "66",
+    "mcc": "520"
+  },
+  {
+    "cn": "Togo",
+    "alpha2": "TG",
+    "pcc": "228",
+    "mcc": "615"
+  },
+  {
+    "cn": "Tonga",
+    "alpha2": "TO",
+    "pcc": "676",
+    "mcc": "539"
+  },
+  {
+    "cn": "Trinidad and Tobago",
+    "alpha2": "TT",
+    "pcc": "1868",
+    "mcc": "374"
+  },
+  {
+    "cn": "Tunisia",
+    "alpha2": "TN",
+    "pcc": "216",
+    "mcc": "605"
+  },
+  {
+    "cn": "Turkey",
+    "alpha2": "TR",
+    "pcc": "90",
+    "mcc": "286"
+  },
+  {
+    "cn": "Turkmenistan",
+    "alpha2": "TM",
+    "pcc": "993",
+    "mcc": "438"
+  },
+  {
+    "cn": "Uganda",
+    "alpha2": "UG",
+    "pcc": "256",
+    "mcc": "641"
+  },
+  {
+    "cn": "Ukraine",
+    "alpha2": "UA",
+    "pcc": "380",
+    "mcc": "255"
+  },
+  {
+    "cn": "United Arab Emirates",
+    "alpha2": "AE",
+    "pcc": "971",
+    "mcc": "424"
+  },
+  {
+    "cn": "United Kingdom",
+    "alpha2": "GB",
+    "pcc": "44",
+    "mcc": "234"
+  },
+  {
+    "cn": "Uruguay",
+    "alpha2": "UY",
+    "pcc": "598",
+    "mcc": "748"
+  },
+  {
+    "cn": "Uzbekistan",
+    "alpha2": "UZ",
+    "pcc": "998",
+    "mcc": "434"
+  },
+  {
+    "cn": "Venezuela",
+    "alpha2": "VE",
+    "pcc": "58",
+    "mcc": "734"
+  },
+  {
+    "cn": "Vietnam",
+    "alpha2": "VN",
+    "pcc": "84",
+    "mcc": "452"
+  },
+  {
+    "cn": "Yemen",
+    "alpha2": "YE",
+    "pcc": "967",
+    "mcc": "421"
+  },
+  {
+    "cn": "Yugoslavia",
+    "alpha2": "YU",
+    "pcc": "381",
+    "mcc": "220"
+  },
+  {
+    "cn": "Zambia",
+    "alpha2": "ZM",
+    "pcc": "260",
+    "mcc": "645"
+  },
+  {
+    "cn": "Zimbabwe",
+    "alpha2": "ZW",
+    "pcc": "263",
+    "mcc": "648"
+  }
+]

@@ -11,6 +11,9 @@ const menuOpen = ref(false)
 const focused = ref(false)
 const loading = ref(false)
 
+const { items: recentSearches, add: recordSearch, remove: removeRecent, clear: clearRecents } =
+  useSearchHistory()
+
 // Close menu/search on route change
 watch(() => route.fullPath, () => {
   menuOpen.value = false
@@ -80,6 +83,15 @@ const links = [
 const submitSearch = () => {
   const term = q.value.trim()
   if (!term) return
+  recordSearch(term)
+  router.push(`/search?q=${encodeURIComponent(term)}`)
+  searchOpen.value = false
+  focused.value = false
+}
+
+const useRecentSearch = (term: string) => {
+  q.value = term
+  recordSearch(term)
   router.push(`/search?q=${encodeURIComponent(term)}`)
   searchOpen.value = false
   focused.value = false
@@ -100,6 +112,11 @@ const titleOf = (s: Suggestion) => s.title || s.name || ''
 
 const showDropdown = computed(
   () => focused.value && q.value.trim().length > 0,
+)
+
+// When the input is focused but empty, surface recent searches as a shortcut.
+const showRecentsDropdown = computed(
+  () => focused.value && !q.value.trim() && recentSearches.value.length > 0,
 )
 
 const onBlur = () => {
@@ -240,6 +257,57 @@ const isActive = (to: string) =>
               </ul>
             </div>
           </Transition>
+
+          <!-- Desktop Recent Searches Dropdown -->
+          <Transition
+            enter-active-class="transition duration-200 ease-out"
+            enter-from-class="translate-y-1 opacity-0"
+            enter-to-class="translate-y-0 opacity-100"
+            leave-active-class="transition duration-150 ease-in"
+            leave-from-class="translate-y-0 opacity-100"
+            leave-to-class="translate-y-1 opacity-0"
+          >
+            <div
+              v-if="showRecentsDropdown"
+              class="absolute top-full right-0 mt-3 w-[400px] max-h-[70vh] overflow-y-auto
+                     rounded-2xl bg-ink-900 ring-1 ring-white/10 shadow-2xl backdrop-blur-xl"
+            >
+              <div class="flex items-center justify-between px-4 pt-3 pb-1">
+                <span class="text-[10px] uppercase tracking-widest font-bold text-slate-500">Recent searches</span>
+                <button
+                  type="button"
+                  class="text-[10px] uppercase tracking-widest font-bold text-slate-500 hover:text-accent transition-colors"
+                  @mousedown.prevent="clearRecents()"
+                >Clear all</button>
+              </div>
+              <ul class="py-1">
+                <li v-for="term in recentSearches" :key="term" class="group flex items-center">
+                  <button
+                    type="button"
+                    class="flex-1 text-left flex items-center gap-3 px-4 py-2.5 hover:bg-white/5 transition-colors min-w-0"
+                    @mousedown.prevent="useRecentSearch(term)"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5 text-slate-500 flex-shrink-0">
+                      <circle cx="12" cy="12" r="10"></circle>
+                      <polyline points="12 6 12 12 16 14"></polyline>
+                    </svg>
+                    <span class="text-sm text-slate-200 truncate">{{ term }}</span>
+                  </button>
+                  <button
+                    type="button"
+                    class="p-2 mr-2 text-slate-600 hover:text-slate-200 opacity-0 group-hover:opacity-100 transition-opacity"
+                    :aria-label="`Remove ${term} from recent searches`"
+                    @mousedown.prevent="removeRecent(term)"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5">
+                      <line x1="18" y1="6" x2="6" y2="18"></line>
+                      <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                  </button>
+                </li>
+              </ul>
+            </div>
+          </Transition>
         </form>
 
         <button
@@ -300,6 +368,42 @@ const isActive = (to: string) =>
                     <span v-if="yearOf(s)"> · {{ yearOf(s) }}</span>
                   </div>
                 </div>
+              </button>
+            </li>
+          </ul>
+        </div>
+        <div v-else-if="recentSearches.length" class="mt-4">
+          <div class="flex items-center justify-between mb-2 px-3">
+            <span class="text-[10px] uppercase tracking-widest font-bold text-slate-500">Recent searches</span>
+            <button
+              type="button"
+              class="text-[10px] uppercase tracking-widest font-bold text-slate-500 hover:text-accent transition-colors"
+              @click="clearRecents()"
+            >Clear all</button>
+          </div>
+          <ul class="space-y-1">
+            <li v-for="term in recentSearches" :key="term" class="group flex items-center">
+              <button
+                type="button"
+                class="flex-1 text-left flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-white/5 transition-colors min-w-0"
+                @click="useRecentSearch(term)"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5 text-slate-500 flex-shrink-0">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <polyline points="12 6 12 12 16 14"></polyline>
+                </svg>
+                <span class="text-sm text-slate-200 truncate">{{ term }}</span>
+              </button>
+              <button
+                type="button"
+                class="p-2 text-slate-600 hover:text-slate-200 transition-colors"
+                :aria-label="`Remove ${term} from recent searches`"
+                @click="removeRecent(term)"
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
               </button>
             </li>
           </ul>
