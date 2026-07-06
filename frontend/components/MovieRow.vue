@@ -11,7 +11,12 @@ type TmdbItem = {
   media_type?: string
 }
 
-type Tab = { key: string; label: string; path: string }
+type Tab = {
+  key: string
+  label: string
+  path: string
+  query?: Record<string, string | number | boolean>
+}
 
 const props = defineProps<{
   title: string
@@ -23,11 +28,14 @@ const props = defineProps<{
 }>()
 
 const active = ref(props.tabs?.[0]?.key)
+const activeTab = computed(() =>
+  props.tabs?.find((t) => t.key === active.value) ?? props.tabs?.[0],
+)
 
 const fetched = props.tabs
   ? useTmdb<{ results: TmdbItem[] }>(
-      () => props.tabs!.find((t) => t.key === active.value)?.path ?? props.tabs![0].path,
-      {},
+      () => activeTab.value?.path ?? '',
+      () => activeTab.value?.query ?? {},
       { lazy: true },
     )
   : null
@@ -45,18 +53,18 @@ const yearOf = (item: TmdbItem) => {
 </script>
 
 <template>
-  <section class="my-10 max-w-7xl mx-auto">
-    <div class="px-6 flex items-center justify-between mb-4 gap-4 flex-wrap">
-      <h2 class="text-xl font-bold tracking-tight text-white/90">{{ title }}</h2>
-      <div v-if="tabs" class="flex gap-2 bg-white/5 p-1 rounded-full backdrop-blur-sm">
+  <section class="my-6 md:my-10 max-w-7xl mx-auto">
+    <div class="px-4 sm:px-6 flex items-center justify-between mb-3 md:mb-4 gap-3 flex-wrap">
+      <h2 class="section-title">{{ title }}</h2>
+      <div v-if="tabs" class="flex gap-1 bg-ink-800 p-1 rounded-md">
         <button
           v-for="t in tabs"
           :key="t.key"
-          class="text-[10px] font-bold uppercase tracking-wider px-4 py-1.5 rounded-full transition-all duration-300"
+          class="text-[10px] font-bold uppercase tracking-wider px-3 md:px-4 py-1.5 rounded transition-colors duration-200"
           :class="
             t.key === active
-              ? 'bg-white text-ink-950 shadow-md'
-              : 'text-slate-400 hover:text-white hover:bg-white/5'
+              ? 'bg-brand-600 text-white'
+              : 'text-slate-400 hover:text-white'
           "
           @click="active = t.key"
         >
@@ -66,19 +74,19 @@ const yearOf = (item: TmdbItem) => {
     </div>
 
     <div class="relative group">
-      <div v-if="pending && !list.length" class="row-scroll px-6">
+      <div v-if="pending && !list.length" class="row-scroll px-4 sm:px-6">
         <div
           v-for="i in 8"
           :key="i"
-          class="w-36 sm:w-48 md:w-52 aspect-[2/3] rounded-xl bg-white/5 animate-pulse shrink-0"
+          class="w-28 sm:w-40 md:w-48 aspect-[2/3] rounded-md bg-white/5 animate-pulse shrink-0"
         />
       </div>
 
-      <div v-else-if="!list.length" class="px-6 text-sm text-slate-500 py-10 text-center glass-panel rounded-2xl mx-6">
+      <div v-else-if="!list.length" class="text-sm text-slate-500 py-8 text-center mx-4 sm:mx-6 rounded-md bg-ink-800/60">
         No titles found in this category.
       </div>
 
-      <div v-else class="row-scroll px-6 mask-fade">
+      <div v-else class="row-scroll px-4 sm:px-6 mask-fade">
         <MovieCard
           v-for="item in list"
           :key="item.id"
@@ -98,7 +106,7 @@ const yearOf = (item: TmdbItem) => {
 
 <style scoped>
 .mask-fade {
-  mask-image: linear-gradient(to right, transparent, black 40px, black calc(100% - 40px), transparent);
+  mask-image: linear-gradient(to right, black 0, black calc(100% - 48px), transparent);
 }
 @media (max-width: 640px) {
   .mask-fade {

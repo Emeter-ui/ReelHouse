@@ -133,10 +133,10 @@ const isActive = (to: string) =>
   <header
     class="sticky top-0 z-50 transition-all duration-300"
     :class="[
-      menuOpen || searchOpen ? 'bg-ink-950' : 'backdrop-blur-xl bg-ink-950/75 border-b border-white/10 shadow-sm'
+      menuOpen || searchOpen ? 'bg-ink-950' : 'backdrop-blur-xl bg-ink-950/85 border-b border-white/5'
     ]"
   >
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center gap-4 sm:gap-8">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 h-14 sm:h-16 flex items-center gap-3 sm:gap-8">
       <!-- Mobile Menu Toggle -->
       <button
         class="md:hidden w-10 h-10 flex flex-col items-center justify-center gap-1.5 transition-colors text-slate-300 hover:text-white"
@@ -148,24 +148,24 @@ const isActive = (to: string) =>
       </button>
 
       <!-- Logo -->
-      <NuxtLink to="/" class="flex items-center gap-2.5 group">
-        <div class="w-8 h-8 rounded-lg bg-brand-gradient shadow-lg shadow-accent/20 group-hover:scale-110 transition-transform" />
-        <span class="font-bold text-xl tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400">
-          Reelhouse
+      <NuxtLink to="/" class="flex items-center gap-2 group">
+        <div class="w-7 h-7 sm:w-8 sm:h-8 rounded-md bg-brand-600 flex items-center justify-center text-white font-black text-sm sm:text-base shadow-md shadow-brand-600/40 group-hover:bg-brand-500 transition-colors">R</div>
+        <span class="font-extrabold text-lg sm:text-xl tracking-tight text-white">
+          Reel<span class="text-brand-400">house</span>
         </span>
       </NuxtLink>
 
       <!-- Desktop Nav -->
-      <nav class="hidden md:flex items-center gap-1">
+      <nav class="hidden md:flex items-center gap-6">
         <NuxtLink
           v-for="l in links"
           :key="l.to"
           :to="l.to"
-          class="px-4 py-2 rounded-full text-sm font-semibold tracking-wide transition-all duration-200"
+          class="relative text-sm font-semibold tracking-wide transition-colors duration-200"
           :class="
             isActive(l.to)
-              ? 'bg-white/10 text-white shadow-sm ring-1 ring-white/20'
-              : 'text-slate-300 hover:text-white hover:bg-white/10'
+              ? 'text-white after:absolute after:-bottom-1.5 after:left-0 after:right-0 after:h-0.5 after:bg-brand-500 after:rounded-full'
+              : 'text-slate-400 hover:text-white'
           "
         >
           {{ l.label }}
@@ -188,8 +188,8 @@ const isActive = (to: string) =>
             v-model="q"
             type="search"
             placeholder="Search..."
-            class="w-48 md:w-64 pl-10 pr-4 py-2 rounded-full bg-white/5 text-sm
-                   ring-1 ring-white/10 focus:ring-accent focus:bg-white/10 focus:w-80
+            class="w-48 md:w-64 pl-10 pr-4 py-2 rounded-md bg-ink-800 text-sm
+                   ring-1 ring-white/5 focus:ring-brand-500 focus:bg-ink-800 focus:w-80
                    outline-none placeholder:text-slate-500 transition-all duration-300"
             @focus="focused = true"
             @blur="onBlur"
@@ -420,19 +420,20 @@ const isActive = (to: string) =>
       leave-from-class="translate-x-0"
       leave-to-class="-translate-x-full"
     >
-      <div v-if="menuOpen" class="md:hidden fixed inset-0 top-16 z-40 bg-ink-950 overflow-y-auto">
-        <nav class="px-6 py-8 flex flex-col gap-2">
+      <div v-if="menuOpen" class="md:hidden fixed inset-0 top-14 z-40 bg-ink-950 overflow-y-auto">
+        <nav class="px-5 py-6 flex flex-col gap-1">
           <NuxtLink
             v-for="l in links"
             :key="l.to"
             :to="l.to"
-            class="px-6 py-4 rounded-2xl text-lg font-semibold transition-all"
+            class="px-4 py-3.5 rounded-md text-base font-semibold transition-colors flex items-center gap-3"
             :class="
               isActive(l.to)
-                ? 'bg-brand-gradient text-white shadow-lg'
+                ? 'bg-brand-600/20 text-white ring-1 ring-brand-600/30'
                 : 'text-slate-300 hover:text-white hover:bg-white/5'
             "
           >
+            <span v-if="isActive(l.to)" class="w-1 h-5 rounded-sm bg-brand-500" />
             {{ l.label }}
           </NuxtLink>
         </nav>

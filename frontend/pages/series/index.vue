@@ -37,9 +37,9 @@ const yearOf = (s: Series) => (s.first_air_date ? Number(s.first_air_date.slice(
 </script>
 
 <template>
-  <div class="max-w-7xl mx-auto px-6 py-8">
-    <h1 class="text-2xl font-bold mb-6">Series</h1>
-    <div class="flex flex-col md:flex-row gap-8">
+  <div class="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
+    <h1 class="text-xl sm:text-2xl font-bold mb-4 sm:mb-6">Series</h1>
+    <div class="flex flex-col md:flex-row gap-6 md:gap-8">
       <FilterSidebar v-model="filters" type="tv" />
       <div class="flex-1 min-w-0">
         <div v-if="pending && !data" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">

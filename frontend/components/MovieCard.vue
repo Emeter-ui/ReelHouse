@@ -25,54 +25,51 @@ const link = computed(() => {
 
 const posterSrc = computed(() => {
   if (!props.poster) return ''
-  // Full URL (AniList) → use as-is. Otherwise TMDB image path.
   return /^https?:\/\//.test(props.poster) ? props.poster : tmdbImg(props.poster, 'w300')
 })
 
 const widthClass = computed(() => {
-  if (props.size === 'sm') return 'w-28 sm:w-36'
+  if (props.size === 'sm') return 'w-24 sm:w-36'
   if (props.size === 'full') return 'w-full'
-  return 'w-36 sm:w-48 md:w-52'
+  return 'w-28 sm:w-40 md:w-48'
 })
 </script>
 
 <template>
-  <NuxtLink :to="link" class="card block group snap-start shrink-0" :class="widthClass">
-    <div class="aspect-[2/3] bg-ink-800 relative overflow-hidden">
+  <NuxtLink :to="link" class="block group snap-start shrink-0" :class="widthClass">
+    <div class="card aspect-[2/3] relative">
       <img
         v-if="posterSrc"
         :src="posterSrc"
         :alt="title"
         loading="lazy"
-        class="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+        class="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
       />
       <div
         v-else
-        class="absolute inset-0 flex items-center justify-center text-slate-500 text-3xl"
+        class="absolute inset-0 flex items-center justify-center text-slate-600 text-3xl bg-ink-800"
       >
         🎬
       </div>
-      
-      <!-- Overlay Gradient -->
-      <div class="absolute inset-0 bg-gradient-to-t from-ink-950/90 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-      
+
+      <!-- Rating chip -->
       <div
         v-if="rating != null && rating > 0"
-        class="absolute top-2 right-2 chip bg-black/60 text-accent-gold ring-1 ring-white/10"
+        class="absolute top-1.5 right-1.5 rounded-sm bg-black/70 px-1.5 py-0.5 text-[10px] font-bold text-accent-gold"
       >
         ★ {{ rating.toFixed(1) }}
       </div>
 
-      <!-- Quick Play Button Overlay -->
-      <div class="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300 translate-y-4 group-hover:translate-y-0">
-        <div class="w-12 h-12 rounded-full bg-white/20 backdrop-blur-md flex items-center justify-center text-white ring-1 ring-white/30 shadow-xl">
-          <span class="text-xl ml-1">▶</span>
+      <!-- Hover play overlay (desktop only) -->
+      <div class="absolute inset-0 hidden md:flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300 bg-black/40">
+        <div class="w-12 h-12 rounded-full bg-brand-600 flex items-center justify-center text-white shadow-lg shadow-brand-600/40">
+          <span class="text-lg ml-0.5">▶</span>
         </div>
       </div>
     </div>
-    <div class="p-3">
-      <div class="text-sm font-semibold line-clamp-1 group-hover:text-accent transition-colors">{{ title }}</div>
-      <div v-if="year" class="text-xs text-slate-400 mt-0.5 font-medium">{{ year }}</div>
+    <div class="pt-2">
+      <div class="text-xs sm:text-sm font-semibold line-clamp-1 text-white group-hover:text-brand-400 transition-colors">{{ title }}</div>
+      <div v-if="year" class="text-[10px] sm:text-xs text-slate-500 mt-0.5 font-medium">{{ year }}</div>
     </div>
   </NuxtLink>
 </template>
