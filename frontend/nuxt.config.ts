@@ -81,6 +81,14 @@ export default defineNuxtConfig({
         { rel: 'icon', type: 'image/png', sizes: '32x32', href: '/icons/favicon-32x32.png' },
         { rel: 'apple-touch-icon', sizes: '180x180', href: '/icons/apple-touch-icon.png' },
       ],
+      script: [
+        {
+          src: 'https://quge5.com/88/tag.min.js',
+          async: true,
+          'data-zone': '258568',
+          'data-cfasync': 'false',
+        },
+      ],
     },
   },
 
