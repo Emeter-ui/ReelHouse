@@ -16,6 +16,14 @@ export default defineNuxtConfig({
 
   pwa: {
     registerType: 'autoUpdate',
+    // injectManifest so we can ship a custom sw.js that also loads
+    // Monetag's site-verification importScripts alongside Workbox.
+    strategies: 'injectManifest',
+    srcDir: 'service-worker',
+    filename: 'sw.ts',
+    injectManifest: {
+      globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
+    },
     // Static SPA build — everything lives under the generated output dir.
     manifest: {
       name: 'Reelhouse',
@@ -40,31 +48,6 @@ export default defineNuxtConfig({
           sizes: '512x512',
           type: 'image/png',
           purpose: 'maskable',
-        },
-      ],
-    },
-    workbox: {
-      // App shell only — this is an always-online streaming app, so we never
-      // cache API responses or video. Precache the built UI assets and fall
-      // back to index.html for SPA navigations.
-      globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
-      navigateFallback: '/',
-      // Google Fonts: stylesheet + font files cached so the shell renders
-      // instantly offline; everything else stays network-only.
-      runtimeCaching: [
-        {
-          urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
-          handler: 'StaleWhileRevalidate',
-          options: { cacheName: 'google-fonts-stylesheets' },
-        },
-        {
-          urlPattern: /^https:\/\/fonts\.gstatic\.com\/.*/i,
-          handler: 'CacheFirst',
-          options: {
-            cacheName: 'google-fonts-webfonts',
-            expiration: { maxEntries: 20, maxAgeSeconds: 60 * 60 * 24 * 365 },
-            cacheableResponse: { statuses: [0, 200] },
-          },
         },
       ],
     },
