@@ -4,11 +4,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import get_settings
-from .routes import captions, debug, healthz, proxy, stats, stream, tmdb, trending
+from .routes import captions, debug, donghua, healthz, proxy, stats, stream, tmdb, trending
 
 settings = get_settings()
 
-app = FastAPI(title="Reelhouse Backend", version="0.1.0")
+app = FastAPI(title="Mymuvies Backend", version="0.1.0")
 
 origins = [
     "http://localhost:3000",
@@ -35,7 +35,8 @@ app.include_router(captions.router, prefix="/api")
 app.include_router(debug.router, prefix="/api")
 app.include_router(trending.router, prefix="/api")
 app.include_router(stats.router, prefix="/api")
+app.include_router(donghua.router, prefix="/api")
 
 @app.get("/")
 def root() -> dict[str, str]:
-    return {"name": "reelhouse-backend", "docs": "/docs"}
+    return {"name": "mymuvies-backend", "docs": "/docs"}

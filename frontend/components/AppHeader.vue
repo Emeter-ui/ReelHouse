@@ -75,6 +75,7 @@ const links = [
   { to: '/movies', label: 'Movies' },
   { to: '/series', label: 'Series' },
   { to: '/anime', label: 'Anime' },
+  { to: '/donghua', label: 'Donghua' },
   { to: '/collection', label: 'Collections' },
   { to: '/my-list', label: 'My List' },
   { to: '/history', label: 'Watch History' },
@@ -149,9 +150,9 @@ const isActive = (to: string) =>
 
       <!-- Logo -->
       <NuxtLink to="/" class="flex items-center gap-2 group">
-        <div class="w-7 h-7 sm:w-8 sm:h-8 rounded-md bg-brand-600 flex items-center justify-center text-white font-black text-sm sm:text-base shadow-md shadow-brand-600/40 group-hover:bg-brand-500 transition-colors">R</div>
+        <div class="w-7 h-7 sm:w-8 sm:h-8 rounded-md bg-brand-600 flex items-center justify-center text-white font-black text-sm sm:text-base shadow-md shadow-brand-600/40 group-hover:bg-brand-500 transition-colors">M</div>
         <span class="font-extrabold text-lg sm:text-xl tracking-tight text-white">
-          Reel<span class="text-brand-400">house</span>
+          My<span class="text-brand-400">muvies</span>
         </span>
       </NuxtLink>
 

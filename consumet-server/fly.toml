@@ -1,0 +1,34 @@
+# Consumet API — self-hosted anime/donghua scraper feeding reelhouse-backend.
+# Deployed from consumet-server/: `fly deploy` (run inside consumet-server/).
+#
+# Public HTTP is enabled so the frontend can also hit it directly if we ever
+# want to (falls back on backend today). Fronted by the FastAPI backend for
+# donghua endpoints; direct hits should stay rate-limited by consumet itself.
+
+app = 'reelhouse-consumet'
+# `bom` (Mumbai) was capacity-full at launch; `sin` is the nearest fallback.
+# Consumet talks to hianime/animekai only, so it doesn't share MovieBox's
+# Singapore-blocked-CDN constraint (see prod-moviebox-proxy memory).
+primary_region = 'sin'
+
+[build]
+  dockerfile = 'Dockerfile'
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[http_service.checks]]
+    interval = '30s'
+    timeout = '5s'
+    grace_period = '15s'
+    method = 'GET'
+    path = '/'
+
+[[vm]]
+  memory = '512mb'
+  cpus = 1
+  memory_mb = 512

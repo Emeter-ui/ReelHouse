@@ -1,0 +1,33 @@
+# FlareSolverr on Fly.io — headless Chromium challenge-solver in front of
+# hianime/megacloud for the reelhouse-consumet server.
+#
+# NOT exposed publicly: the [[services]] block only declares internal_port,
+# so the app is only reachable via the 6PN private network at
+# reelhouse-flaresolverr.internal:8191. Leaving Chromium open to the world
+# is a bad idea (it can be abused as an open proxy).
+
+app = 'reelhouse-flaresolverr'
+primary_region = 'sin'
+
+[build]
+  dockerfile = 'Dockerfile'
+
+# No [http_service] block on purpose — public HTTP is off. Backend hits the
+# .internal hostname on Fly's 6PN.
+[[services]]
+  internal_port = 8191
+  protocol = 'tcp'
+  auto_stop_machines = 'stop'
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[services.tcp_checks]]
+    interval = '30s'
+    timeout = '5s'
+    grace_period = '30s'
+
+# Chromium needs headroom — 512 is a coin-flip OOM, 1024 is comfortable.
+[[vm]]
+  memory = '1024mb'
+  cpus = 1
+  memory_mb = 1024

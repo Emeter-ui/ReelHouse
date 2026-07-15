@@ -38,6 +38,7 @@ const year = new Date().getFullYear()
             <li><NuxtLink to="/movies" class="hover:text-brand-400 transition-colors">Movies</NuxtLink></li>
             <li><NuxtLink to="/series" class="hover:text-brand-400 transition-colors">Series</NuxtLink></li>
             <li><NuxtLink to="/anime" class="hover:text-brand-400 transition-colors">Anime</NuxtLink></li>
+            <li><NuxtLink to="/donghua" class="hover:text-brand-400 transition-colors">Donghua</NuxtLink></li>
             <li><NuxtLink to="/collection" class="hover:text-brand-400 transition-colors">Collections</NuxtLink></li>
           </ul>
         </div>
@@ -59,7 +60,7 @@ const year = new Date().getFullYear()
 
       <div class="border-t border-white/5">
         <div class="max-w-7xl mx-auto px-4 sm:px-6 py-4 text-xs text-slate-500 flex flex-col sm:flex-row items-center justify-between gap-2">
-          <div>© {{ year }} Reelhouse — All rights reserved.</div>
+          <div>© {{ year }} Mymuvies — All rights reserved.</div>
           <div>Made for movie nights.</div>
         </div>
       </div>

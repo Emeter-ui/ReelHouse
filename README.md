@@ -1,4 +1,4 @@
-# Reelhouse
+# Mymuvies
 
 Personal streaming site. Nuxt 3 frontend + FastAPI backend; TMDB metadata, moviebox-api stream resolution. localStorage-only persistence.
 

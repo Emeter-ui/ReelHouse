@@ -16,6 +16,9 @@ export interface StreamOption {
    * set cross-origin cookies via JS, so this rides as a query param on the
    * proxy URL for both manifest and segment fetches. */
   sign_cookie?: string
+  /** For iframe-embed streams (donghua via hianime.ms/megaplay): the
+   * upstream server name shown as the picker label (`megaplay`, `vidnest`). */
+  server?: string
 }
 
 export interface StreamResolveResponse {

@@ -1,7 +1,7 @@
 [project]
-name = "reelhouse-backend"
+name = "mymuvies-backend"
 version = "0.1.0"
-description = "FastAPI backend for Reelhouse — proxies TMDB metadata and resolves stream URLs via moviebox-api."
+description = "FastAPI backend for Mymuvies — proxies TMDB metadata and resolves stream URLs via moviebox-api."
 requires-python = ">=3.12"
 dependencies = [
   "fastapi>=0.115.0",

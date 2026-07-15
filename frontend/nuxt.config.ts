@@ -26,9 +26,9 @@ export default defineNuxtConfig({
     },
     // Static SPA build — everything lives under the generated output dir.
     manifest: {
-      name: 'Reelhouse',
-      short_name: 'Reelhouse',
-      description: 'Reelhouse — personal streaming.',
+      name: 'Mymuvies',
+      short_name: 'Mymuvies',
+      description: 'Mymuvies — personal streaming.',
       lang: 'en',
       start_url: '/',
       scope: '/',
@@ -63,17 +63,17 @@ export default defineNuxtConfig({
 
   app: {
     head: {
-      title: 'Reelhouse',
+      title: 'Mymuvies',
       htmlAttrs: { lang: 'en', class: 'dark' },
       meta: [
         { charset: 'utf-8' },
         { name: 'viewport', content: 'width=device-width, initial-scale=1' },
-        { name: 'description', content: 'Reelhouse — personal streaming.' },
+        { name: 'description', content: 'Mymuvies — personal streaming.' },
         { name: 'color-scheme', content: 'dark' },
         { name: 'theme-color', content: '#020617' },
         { name: 'apple-mobile-web-app-capable', content: 'yes' },
         { name: 'apple-mobile-web-app-status-bar-style', content: 'black-translucent' },
-        { name: 'apple-mobile-web-app-title', content: 'Reelhouse' },
+        { name: 'apple-mobile-web-app-title', content: 'Mymuvies' },
         { name: 'mobile-web-app-capable', content: 'yes' },
       ],
       link: [
