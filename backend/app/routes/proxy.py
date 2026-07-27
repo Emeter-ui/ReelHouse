@@ -89,9 +89,16 @@ def _is_allowed_target(url: str) -> bool:
 
 
 def _should_tunnel_via_fly(host: str) -> bool:
-    """Render's egress IP is 403'd by the hakunaymatata CDN (datacenter block)
-    even with the right Referer. Bytes have to go through the Fly Singapore
-    proxy whose IP the CDN trusts."""
+    """Route CDN bytes through the CF Worker when the backend's own egress
+    is blocked by the CDN. Historically Render/Fly-datacenter IPs were 403'd.
+
+    Exception: `bcdn.*` (mobile download CDN). MovieBox's anti-abuse has now
+    started returning 427 to Cloudflare Worker IPs even when the request
+    carries the correct mobile-app UA. Residential + non-CF cloud IPs still
+    succeed. So we bypass the Worker for `bcdn.*` and go direct — the mobile
+    UA path in the else-branch below handles it."""
+    if _is_mobile_host(host):
+        return False
     return bool(_FLY_PROXY_BASE) and host.lower().endswith(_FLY_TUNNELED_HOST_SUFFIX)
 
 
