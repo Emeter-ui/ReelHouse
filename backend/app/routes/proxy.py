@@ -101,19 +101,16 @@ def _is_allowed_target(url: str) -> bool:
 
 
 def _should_tunnel_via_fly(host: str) -> bool:
-    """Route CDN bytes through the CF Worker when the backend's own egress
-    is blocked by the CDN. Historically Render/Fly-datacenter IPs were 403'd.
+    """Route CDN bytes through MOVIEBOX_PROXY_URL when configured. The
+    tunnel target implements a `/cdn?url=...&referer=...` API — either the
+    Cloudflare Worker (`worker/moviebox-proxy.js`) or the local residential
+    proxy (`local-proxy/proxy_server.py`). Both host mobile UA + Referer
+    branching, so the caller doesn't need to distinguish.
 
-    Overrides (in order):
-      1. Residential proxy configured → skip the Worker entirely. The httpx
-         client will route the direct fetch through the residential proxy,
-         which is the whole point of having one.
-      2. `bcdn.*` (mobile download CDN) → skip the Worker even without a
-         residential proxy. MovieBox's anti-abuse returns 427 to Cloudflare
-         Worker IPs even for correctly-signed mobile-UA requests."""
+    Bypass: if an httpx-level residential proxy is configured
+    (RESIDENTIAL_PROXY_URL, e.g. Webshare-style user:pass), we fetch direct
+    through it and skip the tunnel."""
     if _RESIDENTIAL_PROXY:
-        return False
-    if _is_mobile_host(host):
         return False
     return bool(_FLY_PROXY_BASE) and host.lower().endswith(_FLY_TUNNELED_HOST_SUFFIX)
 
