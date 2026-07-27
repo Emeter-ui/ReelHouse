@@ -16,5 +16,6 @@ RUN uv sync --frozen --no-dev
 
 EXPOSE 8080
 
-# Bind to 0.0.0.0:8080 to match fly.toml's internal_port.
-CMD ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8080"]
+# Bind to 0.0.0.0 on $PORT if the host injects one (Railway does), else 8080
+# (Fly). `sh -c` is what lets the CMD substitute the env var.
+CMD ["sh", "-c", "uv run uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8080}"]

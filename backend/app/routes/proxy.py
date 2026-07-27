@@ -55,6 +55,23 @@ _FLY_PROXY_BASE = os.environ.get("MOVIEBOX_PROXY_URL", "").rstrip("/")
 _FLY_PROXY_SECRET = os.environ.get("MOVIEBOX_PROXY_SECRET", "")
 _FLY_TUNNELED_HOST_SUFFIX = ".hakunaymatata.com"
 
+# The mobile download CDN (`bcdn.*`) has an nginx anti-abuse layer in front of
+# it that rejects any request with a Referer OR a browser User-Agent — the
+# signed URL alone authenticates, and only the MovieBox mobile app's UA is
+# allowed through. Confirmed empirically: Chrome/Firefox/Safari UAs → 428;
+# MovieBox iOS / okhttp UAs → 200. The play CDN (`bcdnxw.*`) behaves
+# oppositely (needs browser UA + Referer=netfilm.world), so this rule is
+# scoped to the download host.
+_MOBILE_HOSTS = frozenset({"bcdn.hakunaymatata.com"})
+# UA of the real MovieBox iOS app — the anti-abuse layer allowlists this and
+# okhttp/*. If MovieBox tightens the check further (e.g. requires the exact
+# current app version), rev this string.
+_MOBILE_UA = "MovieBox/8.0.1 (iPhone; iOS 16.5; Scale/3.00)"
+
+
+def _is_mobile_host(host: str) -> bool:
+    return host.lower() in _MOBILE_HOSTS
+
 
 def _is_allowed_target(url: str) -> bool:
     parsed = urlparse(url)
@@ -92,15 +109,19 @@ async def proxy(
     parsed = urlparse(url)
     use_fly_tunnel = _should_tunnel_via_fly(parsed.hostname or "")
 
+    mobile_host = _is_mobile_host(parsed.hostname or "")
+
     if use_fly_tunnel:
         # Hand off to the Fly proxy: it injects Referer + fetches from a
         # CDN-allowed region. We just forward Range and the auth secret.
-        ref = referer if referer and urlparse(referer).scheme in ("http", "https") else "https://netfilm.world/"
-        upstream_url = (
-            f"{_FLY_PROXY_BASE}/cdn"
-            f"?url={quote(url, safe='')}"
-            f"&referer={quote(ref, safe='')}"
-        )
+        upstream_url = f"{_FLY_PROXY_BASE}/cdn?url={quote(url, safe='')}"
+        if mobile_host:
+            # bcdn.* requires no-referer + MovieBox UA. Worker handles both
+            # when it sees this flag; see worker/moviebox-proxy.js handleCdn.
+            upstream_url += "&no_referer=1"
+        else:
+            ref = referer if referer and urlparse(referer).scheme in ("http", "https") else "https://netfilm.world/"
+            upstream_url += f"&referer={quote(ref, safe='')}"
         if cookie:
             upstream_url += f"&cookie={quote(cookie, safe='')}"
         upstream_headers: dict[str, str] = {
@@ -111,17 +132,27 @@ async def proxy(
             upstream_headers["X-Auth"] = _FLY_PROXY_SECRET
     else:
         upstream_url = url
-        upstream_headers = dict(UPSTREAM_HEADERS)
-        # Most CDNs allowlist Referer against an originating page; honour the
-        # caller hint when given, else default to the URL's own host (subtitles,
-        # public video files, etc.).
-        if referer and urlparse(referer).scheme in ("http", "https"):
-            upstream_headers["Referer"] = referer
-            ref = urlparse(referer)
-            upstream_headers["Origin"] = f"{ref.scheme}://{ref.netloc}"
+        if mobile_host:
+            # `bcdn.*` (mobile download CDN): anti-abuse allowlists mobile-app
+            # UAs only and rejects any request that carries a Referer. Set the
+            # MovieBox iOS UA and omit Referer/Origin; the signed URL
+            # authenticates on its own.
+            upstream_headers = {
+                "User-Agent": _MOBILE_UA,
+                "Accept": "*/*",
+                "Accept-Encoding": "identity",
+            }
         else:
-            upstream_headers["Referer"] = f"{parsed.scheme}://{parsed.netloc}/"
-            upstream_headers["Origin"] = f"{parsed.scheme}://{parsed.netloc}"
+            upstream_headers = dict(UPSTREAM_HEADERS)
+            # Most CDNs allowlist Referer against an originating page; honour
+            # the caller hint when given, else default to the URL's own host.
+            if referer and urlparse(referer).scheme in ("http", "https"):
+                upstream_headers["Referer"] = referer
+                ref = urlparse(referer)
+                upstream_headers["Origin"] = f"{ref.scheme}://{ref.netloc}"
+            else:
+                upstream_headers["Referer"] = f"{parsed.scheme}://{parsed.netloc}/"
+                upstream_headers["Origin"] = f"{parsed.scheme}://{parsed.netloc}"
         # CloudFront signed cookies are how MovieBox gates DASH manifests +
         # segments. The browser can't set cross-origin cookies via JS, so the
         # caller passes the cookie string here and we forward it upstream.

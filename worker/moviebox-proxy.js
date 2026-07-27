@@ -145,6 +145,10 @@ async function handleMobile(request, env, url) {
 // this list is rejected so the Worker isn't a generic open proxy.
 const ALLOWED_CDN_SUFFIX = '.hakunaymatata.com';
 
+// The mobile download CDN allowlists MovieBox app UAs and rejects browser UAs
+// with 428. Paired with `no_referer=1` from proxy.py for bcdn.* targets.
+const MOBILE_APP_UA = 'MovieBox/8.0.1 (iPhone; iOS 16.5; Scale/3.00)';
+
 async function handleCdn(request, env, url) {
   const target = url.searchParams.get('url');
   if (!target) return new Response('missing url', { status: 400 });
@@ -154,16 +158,22 @@ async function handleCdn(request, env, url) {
     return new Response('host not allowed', { status: 400 });
   }
 
-  const referer = url.searchParams.get('referer') || 'https://netfilm.world/';
+  // `bcdn.*` (mobile download CDN) requires: mobile-app UA + no Referer.
+  // Caller sets no_referer=1 to signal both. Play CDN (`bcdnxw.*`) is opposite:
+  // browser UA + Referer=netfilm.world. So we branch on the flag.
+  const noReferer = url.searchParams.get('no_referer') === '1';
+  const referer = noReferer ? '' : (url.searchParams.get('referer') || 'https://netfilm.world/');
   const cookie = url.searchParams.get('cookie') || '';
 
   const headers = {
-    'User-Agent': BROWSER_UA,
+    'User-Agent': noReferer ? MOBILE_APP_UA : BROWSER_UA,
     'Accept': '*/*',
     'Accept-Encoding': 'identity',
-    'Referer': referer,
-    'Origin': new URL(referer).origin,
   };
+  if (referer) {
+    headers['Referer'] = referer;
+    headers['Origin'] = new URL(referer).origin;
+  }
   if (cookie) headers['Cookie'] = cookie;
   // Forward Range so video seeking works end-to-end.
   const range = request.headers.get('Range');
