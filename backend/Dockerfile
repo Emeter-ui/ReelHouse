@@ -11,6 +11,7 @@ WORKDIR /app
 COPY pyproject.toml uv.lock ./
 COPY app ./app
 COPY fzmovies_api ./fzmovies_api
+COPY moviebox_api ./moviebox_api
 
 RUN uv sync --frozen --no-dev
 
