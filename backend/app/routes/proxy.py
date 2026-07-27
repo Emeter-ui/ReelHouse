@@ -22,8 +22,20 @@ from fastapi.responses import Response, StreamingResponse
 
 router = APIRouter()
 
-# Keep one client alive for connection pooling.
-_client = httpx.AsyncClient(timeout=httpx.Timeout(30.0, read=None), follow_redirects=True)
+# Optional residential proxy (Webshare/BrightData/etc.) for CDN byte fetches.
+# When set, all upstream fetches from /proxy and /dash-manifest route through
+# it — MovieBox has periodically block-listed every datacenter IP range we've
+# used (CF Workers, Fly, Railway multi-region), and only residential IPs
+# reliably reach the CDN. Format: http://user:pass@host:port
+_RESIDENTIAL_PROXY = os.environ.get("RESIDENTIAL_PROXY_URL", "").strip() or None
+
+# Keep one client alive for connection pooling. Routes through the residential
+# proxy when configured, else direct.
+_client = httpx.AsyncClient(
+    timeout=httpx.Timeout(30.0, read=None),
+    follow_redirects=True,
+    proxy=_RESIDENTIAL_PROXY,
+)
 
 UPSTREAM_HEADERS = {
     "User-Agent": (
@@ -92,11 +104,15 @@ def _should_tunnel_via_fly(host: str) -> bool:
     """Route CDN bytes through the CF Worker when the backend's own egress
     is blocked by the CDN. Historically Render/Fly-datacenter IPs were 403'd.
 
-    Exception: `bcdn.*` (mobile download CDN). MovieBox's anti-abuse has now
-    started returning 427 to Cloudflare Worker IPs even when the request
-    carries the correct mobile-app UA. Residential + non-CF cloud IPs still
-    succeed. So we bypass the Worker for `bcdn.*` and go direct — the mobile
-    UA path in the else-branch below handles it."""
+    Overrides (in order):
+      1. Residential proxy configured → skip the Worker entirely. The httpx
+         client will route the direct fetch through the residential proxy,
+         which is the whole point of having one.
+      2. `bcdn.*` (mobile download CDN) → skip the Worker even without a
+         residential proxy. MovieBox's anti-abuse returns 427 to Cloudflare
+         Worker IPs even for correctly-signed mobile-UA requests."""
+    if _RESIDENTIAL_PROXY:
+        return False
     if _is_mobile_host(host):
         return False
     return bool(_FLY_PROXY_BASE) and host.lower().endswith(_FLY_TUNNELED_HOST_SUFFIX)
