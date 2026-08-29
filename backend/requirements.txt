@@ -5,6 +5,8 @@ curl_cffi>=0.7.0
 python-dotenv>=1.0.1
 rapidfuzz>=3.10.0
 moviebox-api>=0.5.3
+throttlebuster>=0.1.12
+pydantic>=2.11.7
 # Vendored fzmovies_api (in backend/fzmovies_api/) needs these at runtime.
 requests>=2.32.3
 beautifulsoup4>=4.12.0
