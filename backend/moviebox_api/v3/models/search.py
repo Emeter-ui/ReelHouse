@@ -79,6 +79,7 @@ class ResultsSubjectModel(BaseModel):
     restrict_kid: int = Field(alias="restrictKid")
     season: int
     is_cam: bool = Field(alias="isCam")
+    corner_badge: Any = Field(alias="cornerBadge", default=None)
 
     @property
     def total_seasons(self) -> int:
